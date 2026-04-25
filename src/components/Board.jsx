@@ -12,7 +12,7 @@ import bb from "../assets/pieces/bb.png";
 import br from "../assets/pieces/br.png";
 import bq from "../assets/pieces/bq.png";
 import bk from "../assets/pieces/bk.png";
-import { fenToBoardRows } from "../chess/utils";
+import { fenToBoardRows, uciLineToSanLine } from "../chess/utils";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
@@ -40,9 +40,39 @@ function ChessPiece({ piece, size }) {
   );
 }
 
-export default function Board({ fen, size }) {
+export default function Board({ fen, size, hoveredMove }) {
   const rows = useMemo(() => fenToBoardRows(fen), [fen]);
   const cellSize = Math.floor(size / 8);
+  const boardPixelSize = cellSize * 8;
+
+  const firstMove = hoveredMove?.bestContinuation?.split(" ")[0];
+  const playedMove = hoveredMove?.lan;
+
+  const shouldShowBestMove =
+    firstMove && playedMove && firstMove !== playedMove;
+
+  let highlightFrom = null;
+  let highlightTo = null;
+
+  if (shouldShowBestMove && firstMove.length >= 4) {
+    highlightFrom = firstMove.slice(0, 2);
+    highlightTo = firstMove.slice(2, 4);
+  }
+
+  function squareToCenter(square) {
+    if (!square) return null;
+
+    const file = square.charCodeAt(0) - 97;
+    const rank = Number(square[1]);
+
+    return {
+      x: file * cellSize + cellSize / 2,
+      y: (8 - rank) * cellSize + cellSize / 2,
+    };
+  }
+
+  const arrowFrom = squareToCenter(highlightFrom);
+  const arrowTo = squareToCenter(highlightTo);
 
   return (
     <div className="board-shell">
@@ -50,43 +80,87 @@ export default function Board({ fen, size }) {
         <span>Board</span>
         <span>White at bottom</span>
       </div>
-      <div
-        className="board-grid"
-        style={{
-          width: cellSize * 8,
-          height: cellSize * 8,
-          gridTemplateColumns: "repeat(8, 1fr)",
-          backgroundImage: `url(${woodBoard})`,
-          backgroundSize: "100% 100%",
-          backgroundRepeat: "no-repeat",
-        }}
-      >
-        {rows.map((row, rowIndex) =>
-          row.map((piece, colIndex) => {
-            const isLight = (rowIndex + colIndex) % 2 === 0;
-            const file = FILES[colIndex];
-            const rank = 8 - rowIndex;
 
-            return (
-              <div
-                key={`${rowIndex}-${colIndex}`}
-                className={`board-cell ${isLight ? "board-cell--light" : "board-cell--dark"}`}
-                style={{ width: cellSize, height: cellSize }}
+      <div
+        className="board-wrap"
+        style={{ width: boardPixelSize, height: boardPixelSize }}
+      >
+        <div
+          className="board-grid"
+          style={{
+            width: boardPixelSize,
+            height: boardPixelSize,
+            gridTemplateColumns: "repeat(8, 1fr)",
+            backgroundImage: `url(${woodBoard})`,
+            backgroundSize: "100% 100%",
+            backgroundRepeat: "no-repeat",
+          }}
+        >
+          {rows.map((row, rowIndex) =>
+            row.map((piece, colIndex) => {
+              const isLight = (rowIndex + colIndex) % 2 === 0;
+              const file = FILES[colIndex];
+              const rank = 8 - rowIndex;
+              const square = file + rank;
+
+              return (
+                <div
+                  key={`${rowIndex}-${colIndex}`}
+                  className={`
+                    board-cell
+                    ${isLight ? "board-cell--light" : "board-cell--dark"}
+                    ${square === highlightFrom ? "highlight-from" : ""}
+                    ${square === highlightTo ? "highlight-to" : ""}
+                  `}
+                  style={{ width: cellSize, height: cellSize }}
+                >
+                  {rowIndex === 7 && (
+                    <span className={`coord coord--file ${isLight ? "coord--light" : "coord--dark"}`}>
+                      {file}
+                    </span>
+                  )}
+
+                  {colIndex === 0 && (
+                    <span className={`coord coord--rank ${isLight ? "coord--light" : "coord--dark"}`}>
+                      {rank}
+                    </span>
+                  )}
+
+                  <ChessPiece piece={piece} size={cellSize} />
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {arrowFrom && arrowTo && (
+          <svg
+            className="board-arrow-layer"
+            width={boardPixelSize}
+            height={boardPixelSize}
+            viewBox={`0 0 ${boardPixelSize} ${boardPixelSize}`}
+          >
+            <defs>
+              <marker
+                id="arrowhead"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="5"
+                orient="auto"
               >
-                {rowIndex === 7 && (
-                  <span className={`coord coord--file ${isLight ? "coord--light" : "coord--dark"}`}>
-                    {file}
-                  </span>
-                )}
-                {colIndex === 0 && (
-                  <span className={`coord coord--rank ${isLight ? "coord--light" : "coord--dark"}`}>
-                    {rank}
-                  </span>
-                )}
-                <ChessPiece piece={piece} size={cellSize} />
-              </div>
-            );
-          })
+                <path d="M 0 0 L 10 5 L 0 10 z" />
+              </marker>
+            </defs>
+
+            <line
+              x1={arrowFrom.x}
+              y1={arrowFrom.y}
+              x2={arrowTo.x}
+              y2={arrowTo.y}
+              markerEnd="url(#arrowhead)"
+            />
+          </svg>
         )}
       </div>
     </div>

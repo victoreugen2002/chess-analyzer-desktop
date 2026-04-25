@@ -142,6 +142,7 @@ ipcMain.handle("engine:analyze-game", async (_event, { positions, depth = 15 }) 
       bestEval: bestMoveEval,
       playedEval,
       loss,
+      lan: position.lan,
       bestMoveFen,
     });
   }

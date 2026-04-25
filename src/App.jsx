@@ -2,14 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { fenToBoardRows, evaluateMaterial, evaluateKingShield, moveToHuman, uciLineToSan, uciLineToSanLine, uciMoveToSan} from "./chess/utils";
 import { formatEval, getLabel, getAdvantageSide, explainMove, getOpeningInfo} from "./chess/explanations";
-
 import { generateGameTitle, generateGameSummary, generateNarrativeSummary, estimatePlayerRating, calculateAccuracy } from "./chess/gameSummary";
 import Board from "./components/Board";
 import "./app.css";
 import moveSound from "./assets/sounds/move.mp3";
 import captureSound from "./assets/sounds/capture.mp3";
 
-
+import chessIcon from "./assets/chess-icon.png";
+import bgChess from "./assets/bg-chess.png";
+import bgChessApp from "./assets/bg-chess-app.png";
 const START_PGN = `[Event "Example"]
 [Site "?"]
 [Date "2026.04.18"]
@@ -208,6 +209,8 @@ export default function App() {
   const moveAudio = useMemo(() => new Audio(moveSound), []);
   const captureAudio = useMemo(() => new Audio(captureSound), []);
   const moveListRef = useRef(null);
+  const [rightTab, setRightTab] = useState("moves");
+  const [showStory, setShowStory] = useState(false);
   const [previewFen, setPreviewFen] = useState(null);
   const [previewTimeouts, setPreviewTimeouts] = useState([]);
   const [pgn, setPgn] = useState(START_PGN);
@@ -222,10 +225,10 @@ export default function App() {
   const whiteMoves = analysis.filter((m) => m.side === "w");
   const blackMoves = analysis.filter((m) => m.side === "b");
   const opening = getOpeningInfo(gameData.moves);
-
+  const [started, setStarted] = useState(false);
   const whiteRating = estimatePlayerRating(analysis, gameData.result, "w");
   const blackRating = estimatePlayerRating(analysis, gameData.result, "b");
-
+  const [hoveredMove, setHoveredMove] = useState(null);
   const whiteAccuracy = calculateAccuracy(whiteMoves);
   const blackAccuracy = calculateAccuracy(blackMoves);
 
@@ -389,9 +392,11 @@ export default function App() {
           bestLine: item.bestLine ?? item.pv ?? null,
           pv: item.pv ?? null,
           playedLine: item.playedLine ?? null,
+          bestContinuation: item.bestLine ?? item.pv ?? null,
           bestEval: item.bestEval ?? null,
           playedEval: item.playedEval ?? null,
           loss: safeLoss,
+          lan: item.lan ?? gameData.moves[index]?.lan ?? null,
           label,
 
           explanation: explainMove({
@@ -510,9 +515,69 @@ export default function App() {
   //   speechSynthesis.cancel(); // oprește ce vorbea înainte
   //   speechSynthesis.speak(utterance);
   // }
+  const bgStyle = {
+    backgroundImage: `url(${bgChess})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  };
+  const bgStyleApp = {
+    backgroundImage: `url(${bgChessApp})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  };
+  if (!started) {
+    return (
+      <div className="intro" style={bgStyle}>
 
+        <div className="intro-glow" />
+
+        <div className="intro-card">
+
+          <div className="intro-icon">
+            <img src={chessIcon} className="intro-logo" />
+          </div>
+
+          <h1>Chess Analyzer</h1> 
+
+          <p className="intro-subtitle">
+            Engine-powered analysis of chess games move by move.
+          </p>
+
+          <p className="intro-hint">
+            Paste a PGN or load an example to start analyzing instantly.
+          </p>
+
+          <div className="intro-features">
+            <div>✓ Move-by-move evaluation</div>
+            <div>✓ Blunder detection</div>
+            <div>✓ Best move suggestions</div>
+            <div>✓ Game summaries & ratings</div>
+          </div>
+
+          <div className="intro-actions">
+            <button onClick={() => {
+              setPgn("");
+              setStarted(true);
+            }}>
+              Start new game
+            </button>
+
+            <button onClick={() => {
+              setPgn(START_PGN);
+              setStarted(true);
+            }}>
+              Load example
+            </button>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="app-bg">
+    <div className="app-bg" style={bgStyleApp}>
       <div className="app-wrap">
         <div className="hero-row">
           <div>
@@ -652,10 +717,11 @@ export default function App() {
                 <div className="eval-head"><span>Evaluation</span><span>{formatEval(currentAnalysis?.playedEval ?? 0)}</span></div>
                 <div className="eval-track"><div className="eval-fill" style={{ width: `${getProgressWidth(currentAnalysis?.playedEval ?? 0)}%` }} /></div>
               </div>
+
             </div>
 
-            <Board fen={currentFen} size={boardSize} />
-
+            <Board fen={currentFen} size={boardSize} hoveredMove={hoveredMove}/>
+      
             <div className="nav-row">
               <button
                 onClick={() => {
@@ -711,174 +777,205 @@ export default function App() {
           </section>
      
 
-          <section className="panel">
-            <div className="panel-head panel-head--row">
-              <div>
-                <h2 className="panel-title">Move Review</h2>
-              </div>
-              <div className="waiting-pill">{analysis.length ? "Analyzed" : "Waiting"}</div>
+          <section className="panel panel--right">
+            <div className="tabs">
+              <button className={rightTab === "moves" ? "is-active" : ""} onClick={() => setRightTab("moves")}>Moves</button>
+              <button className={rightTab === "summary" ? "is-active" : ""} onClick={() => setRightTab("summary")}>Summary</button>
             </div>
-            {opening && (
-              <div className="coach-box" style={{ marginTop: "8px" }}>
-                <strong>{opening.name}</strong>
-                <br />
-
-                {opening.description.split("\n").map((line, i) => {
-                  if (line.startsWith("Plan:")) {
-                    return (
-                      <div key={i}>
-                        <strong>Plan:</strong> {line.replace("Plan: ", "")}
-                      </div>
-                    );
-                  }
-
-                  return <div key={i}>{line}</div>;
-                })}
+            {rightTab === "moves" && (
+              <>
+              <div className="panel-head panel-head--row">
+                <div>
+                  <h2 className="panel-title">Move Review</h2>
+                </div>
+                <div className="waiting-pill">{analysis.length ? "Analyzed" : "Waiting"}</div>
               </div>
-            )}
-            <div className="move-list" ref={moveListRef}>
-              <div className="move-list-grid">
-                {Array.from({ length: Math.ceil(gameData.moves.length / 2) }).map((_, idx) => {
-                  const white = gameData.moves[idx * 2];
-                  const black = gameData.moves[idx * 2 + 1];
-                  const whiteAnalysis = white ? analysisMap.get(white.ply) : null;
-                  const blackAnalysis = black ? analysisMap.get(black.ply) : null;
 
-                  return (
-                   <React.Fragment key={idx}>
-                    <div className="move-number">{idx + 1}</div>
+              <div className="move-list" ref={moveListRef}>
+                <div className="move-list-grid">
+                  {Array.from({ length: Math.ceil(gameData.moves.length / 2) }).map((_, idx) => {
+                    const white = gameData.moves[idx * 2];
+                    const black = gameData.moves[idx * 2 + 1];
+                    const whiteAnalysis = white ? analysisMap.get(white.ply) : null;
+                    const blackAnalysis = black ? analysisMap.get(black.ply) : null;
 
-                    <button
-                      
-                      onClick={() => {
-                        if (!white) return;
-                        resetPreview();
-                        setSelectedPly(white.ply);
-                        playSoundForSan(white.san);
-                      }}
-                      className={`move-btn ${selectedPly === white?.ply ? "move-btn--active" : ""}`}
-                    >
-                      <div className="move-san">{white?.san || ""}</div>
-                      <div className="move-meta">
-                        <span>{whiteAnalysis?.label || "Not analyzed"}</span>
-                        {whiteAnalysis?.label ? (
-                          <span className={getMoveBadgeClass(whiteAnalysis.label)}>
-                            {getMoveSymbol(whiteAnalysis.label)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
+                    console.log("WHITE PV:", whiteAnalysis?.bestContinuation);
 
-                    <button
-                      
-                      onClick={() => {
-                        if (!black) return;
-                        resetPreview();
-                        setSelectedPly(black.ply);
-                        playSoundForSan(black.san);
-                      }}
-                      className={`move-btn ${selectedPly === black?.ply ? "move-btn--active" : ""}`}
-                    >
-                      <div className="move-san">{black?.san || ""}</div>
-                      <div className="move-meta">
-                        <span>{blackAnalysis?.label || "Not analyzed"}</span>
+                    return (
+                    <React.Fragment key={idx}>
+                      <div className="move-number">{idx + 1}</div>
+                        <button
+                          onMouseEnter={() => {
+                            if (selectedPly === white?.ply) {
+                              setHoveredMove(whiteAnalysis);
+                            }
+                          }}
+                          onMouseLeave={() => setHoveredMove(null)}
+                          onClick={() => {
+                            if (!white) return;
+                            resetPreview();
+                            setSelectedPly(white.ply);
+                            setHoveredMove(whiteAnalysis);
+                            playSoundForSan(white.san);
+                          }}
+                          className={`move-btn ${selectedPly === white?.ply ? "move-btn--active" : ""}`}
+                        >
+                        <div className="move-san">
+                          {white?.san || ""}
+                          {whiteAnalysis?.label && (
+                            <span className={getMoveBadgeClass(whiteAnalysis.label)}>
+                              {getMoveSymbol(whiteAnalysis.label)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+
+                        <button
+                          onMouseEnter={() => {
+                            if (selectedPly === black?.ply) {
+                              setHoveredMove(blackAnalysis);
+                            }
+                          }}
+                          onMouseLeave={() => setHoveredMove(null)}
+                          onClick={() => {
+                            if (!black) return;
+                            resetPreview();
+                            setSelectedPly(black.ply);
+                            setHoveredMove(blackAnalysis);
+                            playSoundForSan(black.san);
+                          }}
+                          className={`move-btn ${selectedPly === black?.ply ? "move-btn--active" : ""}`}
+                        >
+                        <div className="move-san">{black?.san || ""}</div>
                         {blackAnalysis?.label ? (
                           <span className={getMoveBadgeClass(blackAnalysis.label)}>
                             {getMoveSymbol(blackAnalysis.label)}
                           </span>
                         ) : null}
-                      </div>
-                    </button>
-                  </React.Fragment>
-                  );
-                })}
+                      </button>
+                    </React.Fragment>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
 
-            <div className="analysis-card">
-              {currentMove ? (
-                <>
-                  <div className="analysis-top">
-                    <div>
-                      <div className="analysis-label">Selected move</div>
-                      <div className="analysis-title">{currentMove.side === "w" ? "White" : "Black"} played {currentMove.san}</div>
+              <div className="analysis-card">
+                {currentMove ? (
+                  <>
+                    <div className="analysis-top">
+                      <div>
+                        <div className="analysis-label">Selected move</div>
+                        <div className="analysis-title">{currentMove.side === "w" ? "White" : "Black"} played {currentMove.san}</div>
+                      </div>
+                      <div className={getMoveBadgeClass(currentAnalysis?.label)}>{currentAnalysis?.label || "Not analyzed"}</div>
                     </div>
-                    <div className={getMoveBadgeClass(currentAnalysis?.label)}>{currentAnalysis?.label || "Not analyzed"}</div>
-                  </div>
 
-                  <div className="stat-grid">
-                    <div className="stat-box">
-                      <span>Best move:</span>{" "}
-                      {currentAnalysis?.bestMove
-                        ? uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.bestMove, 1)
+                    <div className="stat-grid">
+                      <div className="stat-box">
+                        <span>Best move:</span>{" "}
+                        {currentAnalysis?.bestMove
+                          ? uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.bestMove, 1)
+                          : "—"}
+                      </div>
+                      <div className="stat-box"><span>Best eval:</span> {formatEval(currentAnalysis?.bestEval)}</div>
+                      <div className="stat-box"><span>Played eval:</span> {formatEval(currentAnalysis?.playedEval)}</div>
+                      <div className="stat-box"><span>Centipawn loss:</span> {currentAnalysis ? Math.round(currentAnalysis.loss) : "—"}</div>
+                    </div>
+
+                    <div className="pv-box">
+                      <span>Principal variation:</span>{" "}
+                      {currentAnalysis?.pv
+                        ? uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.pv, 12)
                         : "—"}
                     </div>
-                    <div className="stat-box"><span>Best eval:</span> {formatEval(currentAnalysis?.bestEval)}</div>
-                    <div className="stat-box"><span>Played eval:</span> {formatEval(currentAnalysis?.playedEval)}</div>
-                    <div className="stat-box"><span>Centipawn loss:</span> {currentAnalysis ? Math.round(currentAnalysis.loss) : "—"}</div>
+                      {currentAnalysis && currentAnalysis.label !== "Good" ? (
+                        <>
+                          <div
+                            className="pv-box"
+                            onClick={() =>
+                              playLinePreview(currentAnalysis.fenBefore, currentAnalysis.bestLine)
+                            }
+                            style={{ cursor: "pointer" }}
+                          >
+                            <span>Best continuation:</span>{" "}
+                            {uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.bestLine, 8)}
+                          </div>
+
+                          <div
+                            className="pv-box"
+                            onClick={() =>
+                              playLinePreview(currentMove?.fenBefore, currentAnalysis.playedLine)
+                            }
+                            style={{ cursor: "pointer" }}
+                          >
+                            <span>After your move:</span>{" "}
+                            {uciLineToSanLine(currentMove?.fenBefore, currentAnalysis.playedLine, 8)}
+                          </div>
+                        </>
+                      ) : null}
+                    <div className="coach-box">{currentAnalysis?.explanation || "Run the analysis to generate a coach explanation for this move."}</div>
+                  
+                  </>
+                ) : (
+                  <div className="empty-note">Select a move to see evaluation, best line, and explanation.</div>
+                )}
+              </div>
+          
+
+              </>
+            )}
+
+            {rightTab === "summary" && (
+              <>
+                <div className="analysis-card">
+                  <div className="analysis-label">Game Title</div>
+                  <div className="coach-box" style={{ fontWeight: "600" }}>
+                    {gameTitle || "Run analysis to generate title."}
+                  </div>
+                </div>
+
+                {opening && (
+                  <div className="analysis-card" style={{ marginTop: "20px" }}>
+                    <div className="analysis-label">Opening</div>
+                    <div className="coach-box">
+                      <strong>{opening.name}</strong>
+                      <br />
+                      {opening.description.split("\n").map((line, i) =>
+                        line.startsWith("Plan:") ? (
+                          <div key={i}>
+                            <strong>Plan:</strong> {line.replace("Plan: ", "")}
+                          </div>
+                        ) : (
+                          <div key={i}>{line}</div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="analysis-card" style={{ marginTop: "20px" }}>
+                  <div className="analysis-label">Game Summary</div>
+                  <div className="coach-box">
+                    {summaryText || "Run analysis to see summary."}
                   </div>
 
-                  <div className="pv-box">
-                    <span>Principal variation:</span>{" "}
-                    {currentAnalysis?.pv
-                      ? uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.pv, 12)
-                      : "—"}
-                  </div>
-                    {currentAnalysis && currentAnalysis.label !== "Good" ? (
-                      <>
-                        <div
-                          className="pv-box"
-                          onClick={() =>
-                            playLinePreview(currentAnalysis.fenBefore, currentAnalysis.bestLine)
-                          }
-                          style={{ cursor: "pointer" }}
-                        >
-                          <span>Best continuation:</span>{" "}
-                          {uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.bestLine, 8)}
-                        </div>
+                  <button
+                    className="btn btn--ghost"
+                    style={{ marginTop: "12px" }}
+                    onClick={() => setShowStory((v) => !v)}
+                  >
+                    {showStory ? "Show less ▲" : "Show more ▼"}
+                  </button>
 
-                        <div
-                          className="pv-box"
-                          onClick={() =>
-                            playLinePreview(currentMove?.fenBefore, currentAnalysis.playedLine)
-                          }
-                          style={{ cursor: "pointer" }}
-                        >
-                          <span>After your move:</span>{" "}
-                          {uciLineToSanLine(currentMove?.fenBefore, currentAnalysis.playedLine, 8)}
-                        </div>
-                      </>
-                    ) : null}
-                  <div className="coach-box">{currentAnalysis?.explanation || "Run the analysis to generate a coach explanation for this move."}</div>
-                 
-                </>
-              ) : (
-                <div className="empty-note">Select a move to see evaluation, best line, and explanation.</div>
-              )}
-            </div>
-            <div className="analysis-card" style={{ marginTop: "20px" }}>
-              <div className="analysis-label">Game Title</div>
-              <div className="coach-box" style={{ fontWeight: "600" }}>
-                {gameTitle || "Run analysis to generate title."}
-              </div>
-            </div>
-            <div className="analysis-card" style={{ marginTop: "20px" }}>
-              <div className="analysis-label">Game Summary</div>
-              <div className="coach-box">
-                {summaryText || "Run analysis to see summary."}
-              </div>
-
-
-            </div>
-
-            <div className="analysis-card" style={{ marginTop: "20px" }}>
-              <div className="analysis-label">Game Story</div>
-              <div className="coach-box">
-                {narrativeText || "Run analysis to see the story of the game."}
-              </div>
-
-
-            </div>
+                  {showStory && (
+                    <div className="coach-box" style={{ marginTop: "12px" }}>
+                      {narrativeText || "Run analysis to see the story of the game."}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+    
           </section>
         </div>
       </div>
