@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { fenToBoardRows, evaluateMaterial, evaluateKingShield, moveToHuman, uciLineToSan, uciLineToSanLine, uciMoveToSan} from "./chess/utils";
-import { formatEval, getLabel, getAdvantageSide,explainMove} from "./chess/explanations";
+import { formatEval, getLabel, getAdvantageSide, explainMove, getOpeningInfo} from "./chess/explanations";
 
 import { generateGameTitle, generateGameSummary, generateNarrativeSummary, estimatePlayerRating, calculateAccuracy } from "./chess/gameSummary";
 import Board from "./components/Board";
@@ -84,12 +84,17 @@ function sanToSpeech(san) {
 }
 
 
-
+function getMoveSymbol(label) {
+  if (label === "Blunder") return "??";
+  if (label === "Mistake") return "?";
+  if (label === "Inaccuracy") return "?!";
+  return "";
+}
 function getMoveBadgeClass(label) {
   if (label === "Blunder") return "badge badge--blunder";
   if (label === "Mistake") return "badge badge--mistake";
   if (label === "Inaccuracy") return "badge badge--inaccuracy";
-  return "badge badge--good";
+  return "";
 }
 
 function getProgressWidth(cp) {
@@ -216,10 +221,10 @@ export default function App() {
   const [depth, setDepth] = useState(15);
   const whiteMoves = analysis.filter((m) => m.side === "w");
   const blackMoves = analysis.filter((m) => m.side === "b");
+  const opening = getOpeningInfo(gameData.moves);
 
-
-  const whiteRating = estimatePlayerRating(whiteMoves, gameData.result, "w");
-  const blackRating = estimatePlayerRating(blackMoves, gameData.result, "b");
+  const whiteRating = estimatePlayerRating(analysis, gameData.result, "w");
+  const blackRating = estimatePlayerRating(analysis, gameData.result, "b");
 
   const whiteAccuracy = calculateAccuracy(whiteMoves);
   const blackAccuracy = calculateAccuracy(blackMoves);
@@ -359,41 +364,51 @@ export default function App() {
 
       const raw = await window.engineApi.analyzeGame(gameData.moves, depth);
 
-      console.log("RAW ANALYSIS:", raw); // 👈 AICI
+
 
       const results = raw.map((item, index, arr) => {
-        const bestMove = item.bestMove || "—";
+        const bestMove = item.bestMove ?? null;
         const safeLoss = Number.isFinite(item.loss) ? item.loss : null;
-        const label = getLabel(safeLoss);
+
+        const label = getLabel(
+          safeLoss,
+          item.bestEval,
+          item.bestEval,
+          item.playedEval
+        );
+
         const previousSan = index > 0 ? arr[index - 1]?.san ?? null : null;
 
         return {
           ply: item.ply,
           side: item.side,
           san: item.san,
-          bestMove,
-          bestEval: item.bestEval ?? "—",
-          playedEval: item.playedEval ?? "—",
-          loss: safeLoss,
-          label,
-          pv: item.pv || "—",
-          bestLine: item.bestLine || item.pv || "—",
-          playedLine: item.playedLine || "—",
           fenBefore: item.fenBefore,
           fenAfter: item.fenAfter,
+          bestMove,
+          bestLine: item.bestLine ?? item.pv ?? null,
+          pv: item.pv ?? null,
+          playedLine: item.playedLine ?? null,
+          bestEval: item.bestEval ?? null,
+          playedEval: item.playedEval ?? null,
+          loss: safeLoss,
+          label,
+
           explanation: explainMove({
             label,
             loss: safeLoss,
             san: item.san,
             bestMove,
-            beforeEval: item.bestEval ?? "—",
-            afterEval: item.playedEval ?? "—",
+            beforeEval: item.bestEval ?? null,
+            afterEval: item.playedEval ?? null,
             side: item.side,
             fenBefore: item.fenBefore,
             fenAfter: item.fenAfter,
-            bestLineText: item.bestLine || item.pv || "—",
-            playedLineText: item.playedLine || "—",
+            bestLineText: item.bestLine ?? item.pv ?? null,
+            playedLineText: item.playedLine ?? null,
             previousSan,
+            moveIndex: index,
+            moves: gameData.moves,
           }),
         };
       });
@@ -501,75 +516,9 @@ export default function App() {
       <div className="app-wrap">
         <div className="hero-row">
           <div>
-            <div className="pill">Desktop App</div>
             <h1 className="page-title">Chess Analysis</h1>
           </div>
-          <div className="summary-wrapper">
-            <div className="summary-grid">
-              <div className="summary-card">
-                <div className="summary-label">White</div>
-                <div className="summary-rating">{whiteRating} rating</div>
-                <div className="summary-accuracy">
-                  <strong>{whiteAccuracy}%</strong> accuracy
-                </div>
 
-                <div className="summary-mini-grid">
-                  <div className="summary-mini">
-                    <span className="summary-mini__label">Inaccuracies</span>
-                    <span className="summary-value summary-value--inaccuracy">
-                      {summary.white.Inaccuracy}
-                    </span>
-                  </div>
-
-                  <div className="summary-mini">
-                    <span className="summary-mini__label">Mistakes</span>
-                    <span className="summary-value summary-value--mistake">
-                      {summary.white.Mistake}
-                    </span>
-                  </div>
-
-                  <div className="summary-mini">
-                    <span className="summary-mini__label">Blunders</span>
-                    <span className="summary-value summary-value--blunder">
-                      {summary.white.Blunder}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="summary-card">
-                <div className="summary-label">Black</div>
-                <div className="summary-rating">{blackRating} rating</div>
-                <div className="summary-accuracy">
-                  <strong>{blackAccuracy}%</strong> accuracy
-                </div>
-                <div className="summary-mini-grid">
-                  <div className="summary-mini">
-                    <span className="summary-mini__label">Inaccuracies</span>
-                    <span className="summary-value summary-value--inaccuracy">
-                      {summary.black.Inaccuracy}
-                    </span>
-                  </div>
-                  <div className="summary-mini">
-                    <span className="summary-mini__label">Mistakes</span>
-                    <span className="summary-value summary-value--mistake">
-                      {summary.black.Mistake}
-                    </span>
-                  </div>
-                  <div className="summary-mini">
-                    <span className="summary-mini__label">Blunders</span>
-                    <span className="summary-value summary-value--blunder">
-                      {summary.black.Blunder}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-            <div className="summary-overview">
-              {betterPlayerText}
-            </div>
-          </div>
         </div>
 
         <div className="main-grid">
@@ -582,8 +531,9 @@ export default function App() {
             </div>
 
             <label className="field-label">PGN</label>
+            
             <textarea value={pgn} onChange={(e) => setPgn(e.target.value)} className="pgn-input" />
-
+            {error ? <div className="error-box">{error}</div> : null}
             <div className="range-row">
               <label className="field-label">Depth</label>
               <input type="range" min="10" max="20" value={depth} onChange={(e) => setDepth(Number(e.target.value))} className="depth-slider" />
@@ -595,14 +545,89 @@ export default function App() {
               <button onClick={runAnalysis} disabled={isAnalyzing || gameData.moves.length === 0} className="btn btn--success">{isAnalyzing ? "Analyzing..." : "Run Analysis"}</button>
             </div>
 
-            <div className="info-card">
+            <div className="summary-wrapper">
+              <div className="summary-grid">
+                <div className="summary-card">
+                  <div className="summary-label">White</div>
+                  <div className="summary-rating">
+                    <span className="summary-rating__label">Game Rating</span>
+                    <span className="summary-rating__value">{whiteRating}</span>
+                  </div>
+                  <div className="summary-accuracy">
+                    <strong>{whiteAccuracy}%</strong> accuracy
+                  </div>
+
+                  <div className="summary-mini-grid">
+                    <div className="summary-mini">
+                      <span className="summary-mini__label">Inaccuracies</span>
+                      <span className="summary-value summary-value--inaccuracy">
+                        {summary.white.Inaccuracy}
+                      </span>
+                    </div>
+
+                    <div className="summary-mini">
+                      <span className="summary-mini__label">Mistakes</span>
+                      <span className="summary-value summary-value--mistake">
+                        {summary.white.Mistake}
+                      </span>
+                    </div>
+
+                    <div className="summary-mini">
+                      <span className="summary-mini__label">Blunders</span>
+                      <span className="summary-value summary-value--blunder">
+                        {summary.white.Blunder}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+             
+                  <div className="summary-card">
+                    <div className="summary-label">Black</div>
+                    <div className="summary-rating">
+                      <span className="summary-rating__label">Game Rating</span>
+                      <span className="summary-rating__value">{blackRating}</span>
+                    </div>
+                    <div className="summary-accuracy">
+                      <strong>{blackAccuracy}%</strong> accuracy
+                    </div>
+                    <div className="summary-mini-grid">
+                      <div className="summary-mini">
+                        <span className="summary-mini__label">Inaccuracies</span>
+                        <span className="summary-value summary-value--inaccuracy">
+                          {summary.black.Inaccuracy}
+                        </span>
+                      </div>
+                      <div className="summary-mini">
+                        <span className="summary-mini__label">Mistakes</span>
+                        <span className="summary-value summary-value--mistake">
+                          {summary.black.Mistake}
+                        </span>
+                      </div>
+                      <div className="summary-mini">
+                        <span className="summary-mini__label">Blunders</span>
+                        <span className="summary-value summary-value--blunder">
+                          {summary.black.Blunder}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+             
+           
+          
+              </div>
+              <div className="summary-overview">
+                {betterPlayerText}
+              </div>
+            </div>
+
+            {/* <div className="info-card">
               <div className="info-row"><span>Engine mode</span><span className="status-chip">Bundled Stockfish</span></div>
               <div className="info-row"><span>Moves loaded</span><strong>{gameData.moves.length}</strong></div>
               <div className="info-row"><span>Result</span><strong>{gameData.result}</strong></div>
               {error ? <div className="error-box">{error}</div> : null}
-            </div>
+            </div> */}
 
-            <div className="tests-card">
+            {/* <div className="tests-card">
               <div className="tests-title">Self-checks</div>
               <div className="tests-list">
                 {tests.map((test) => (
@@ -612,7 +637,7 @@ export default function App() {
                   </div>
                 ))}
               </div>
-            </div>
+            </div> */}
           </section>
 
           <section className="panel panel--board">
@@ -681,7 +706,10 @@ export default function App() {
               </button>
               <div className="ply-box">Ply <strong>{selectedPly}</strong> / {gameData.moves.length}</div>
             </div>
+      
+       
           </section>
+     
 
           <section className="panel">
             <div className="panel-head panel-head--row">
@@ -690,7 +718,24 @@ export default function App() {
               </div>
               <div className="waiting-pill">{analysis.length ? "Analyzed" : "Waiting"}</div>
             </div>
+            {opening && (
+              <div className="coach-box" style={{ marginTop: "8px" }}>
+                <strong>{opening.name}</strong>
+                <br />
 
+                {opening.description.split("\n").map((line, i) => {
+                  if (line.startsWith("Plan:")) {
+                    return (
+                      <div key={i}>
+                        <strong>Plan:</strong> {line.replace("Plan: ", "")}
+                      </div>
+                    );
+                  }
+
+                  return <div key={i}>{line}</div>;
+                })}
+              </div>
+            )}
             <div className="move-list" ref={moveListRef}>
               <div className="move-list-grid">
                 {Array.from({ length: Math.ceil(gameData.moves.length / 2) }).map((_, idx) => {
@@ -718,7 +763,7 @@ export default function App() {
                         <span>{whiteAnalysis?.label || "Not analyzed"}</span>
                         {whiteAnalysis?.label ? (
                           <span className={getMoveBadgeClass(whiteAnalysis.label)}>
-                            {whiteAnalysis.label[0]}
+                            {getMoveSymbol(whiteAnalysis.label)}
                           </span>
                         ) : null}
                       </div>
@@ -739,7 +784,7 @@ export default function App() {
                         <span>{blackAnalysis?.label || "Not analyzed"}</span>
                         {blackAnalysis?.label ? (
                           <span className={getMoveBadgeClass(blackAnalysis.label)}>
-                            {blackAnalysis.label[0]}
+                            {getMoveSymbol(blackAnalysis.label)}
                           </span>
                         ) : null}
                       </div>

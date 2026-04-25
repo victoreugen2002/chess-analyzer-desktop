@@ -5,9 +5,13 @@ class StockfishEngine {
   constructor() {
     this.engine = null;
     this.currentResolve = null;
+
     this.lastScore = null;
-    this.lastPv = null;
+    this.lastPv = "";
+    this.bestMove = null;
+
     this.pendingStart = null;
+    this.buffer = "";
   }
 
   async start() {
@@ -26,10 +30,7 @@ class StockfishEngine {
         console.error("Stockfish stderr:", data.toString());
       });
 
-      this.engine.on("error", (err) => {
-        console.error("Stockfish process error:", err);
-        reject(err);
-      });
+      this.engine.on("error", reject);
 
       this.engine.stdin.write("uci\n");
     });
@@ -38,69 +39,88 @@ class StockfishEngine {
   }
 
   handleOutput(text, startResolve = null) {
-    const lines = text.split(/\r?\n/).filter(Boolean);
+    this.buffer += text;
+    const lines = this.buffer.split(/\r?\n/);
+    this.buffer = lines.pop();
 
     for (const line of lines) {
+      if (!line) continue;
+
       console.log("SF:", line);
 
+      // INIT
       if (line === "uciok") {
         this.engine.stdin.write("isready\n");
         continue;
       }
 
       if (line === "readyok") {
-        if (startResolve) startResolve();
+        if (startResolve) {
+          startResolve();
+          this.pendingStart = null;
+        }
         continue;
       }
 
+      // INFO: score + principal variation
       if (line.startsWith("info ")) {
         const scoreMatch = line.match(/score (cp|mate) (-?\d+)/);
+
         if (scoreMatch) {
           this.lastScore = {
             type: scoreMatch[1],
-            value: parseInt(scoreMatch[2], 10),
+            value: Number(scoreMatch[2]),
           };
         }
 
-        const pvMatch = line.match(/\spv\s(.+)$/);
-        if (pvMatch) {
-          this.lastPv = pvMatch[1].trim();
+        const pvIndex = line.indexOf(" pv ");
+        if (pvIndex !== -1) {
+          const pv = line.slice(pvIndex + 4).trim();
+
+          if (pv) {
+            this.lastPv = pv;
+          }
         }
 
         continue;
       }
 
+      // FINAL BEST MOVE
       if (line.startsWith("bestmove ")) {
-        const bestMoveMatch = line.match(/^bestmove (\S+)/);
-        const bestMove = bestMoveMatch ? bestMoveMatch[1] : null;
+        const match = line.match(/^bestmove\s+(\S+)/);
+        const bestMove = match && match[1] !== "(none)" ? match[1] : null;
 
-        console.log("SF FINAL:", {
-          bestMove,
+        const result = {
+          bestMove: bestMove || this.lastPv?.split(" ")[0] || null,
           score: this.lastScore,
-          pv: this.lastPv,
-        });
+          pv: this.lastPv || null,
+        };
+
+        console.log("SF FINAL:", result);
 
         if (this.currentResolve) {
-          this.currentResolve({
-            bestMove,
-            score: this.lastScore,
-            pv: this.lastPv,
-          });
+          this.currentResolve(result);
           this.currentResolve = null;
         }
+
+        continue;
       }
     }
   }
-
   async analyzeFen(fen, depth = 15) {
     await this.start();
 
     return new Promise((resolve) => {
       this.currentResolve = resolve;
+
       this.lastScore = null;
-      this.lastPv = null;
+      this.lastPv = "";
+      this.bestMove = null;
+
+      console.log("ANALYZE FEN:", fen);
 
       this.engine.stdin.write("ucinewgame\n");
+      this.engine.stdin.write("setoption name MultiPV value 1\n");
       this.engine.stdin.write(`position fen ${fen}\n`);
       this.engine.stdin.write(`go depth ${depth}\n`);
     });
@@ -108,9 +128,12 @@ class StockfishEngine {
 
   async quit() {
     if (!this.engine) return;
+
     this.engine.stdin.write("quit\n");
     this.engine.kill();
+
     this.engine = null;
+    this.currentResolve = null;
     this.pendingStart = null;
   }
 }

@@ -6,11 +6,24 @@ export function averageLoss(moves) {
 }
 
 export function estimatePlayerRating(moves, result, side) {
-  const validMoves = moves.filter((m) => Number.isFinite(m.loss));
+  const playerMoves = moves.filter((m) =>
+    side === "w"
+      ? m.side === "w" || m.side === "White"
+      : m.side === "b" || m.side === "Black"
+  );
+
+  const opponentMoves = moves.filter((m) =>
+    side === "w"
+      ? m.side === "b" || m.side === "Black"
+      : m.side === "w" || m.side === "White"
+  );
+
+  const validMoves = playerMoves.filter((m) => Number.isFinite(m.loss));
   if (!validMoves.length) return 1200;
 
   const avgLoss =
-    validMoves.reduce((sum, m) => sum + Math.min(m.loss, 200), 0) / validMoves.length;
+    validMoves.reduce((sum, m) => sum + Math.min(m.loss, 200), 0) /
+    validMoves.length;
 
   const blunders = validMoves.filter((m) => m.label === "Blunder").length;
   const mistakes = validMoves.filter((m) => m.label === "Mistake").length;
@@ -19,10 +32,6 @@ export function estimatePlayerRating(moves, result, side) {
   const swings = validMoves.map((m) => Math.min(m.loss, 300));
   const bigSwings = swings.filter((v) => v >= 120).length;
   const mediumSwings = swings.filter((v) => v >= 70 && v < 120).length;
-
-  const opponentMoves = moves.filter((m) =>
-    side === "w" ? m.side === "b" || m.side === "Black" : m.side === "w" || m.side === "White"
-  );
 
   const opponentBlunders = opponentMoves.filter((m) => m.label === "Blunder").length;
   const opponentMistakes = opponentMoves.filter((m) => m.label === "Mistake").length;
@@ -33,74 +42,47 @@ export function estimatePlayerRating(moves, result, side) {
 
   let rating = 800;
 
-  if (avgLoss < 10) rating = 2350;
-  else if (avgLoss < 18) rating = 2250;
-  else if (avgLoss < 28) rating = 2100;
-  else if (avgLoss < 40) rating = 1900;
-  else if (avgLoss < 55) rating = 1750;
+  if (avgLoss < 8) rating = 2700;
+  else if (avgLoss < 15) rating = 2500;
+  else if (avgLoss < 25) rating = 2250;
+  else if (avgLoss < 38) rating = 2000;
+  else if (avgLoss < 55) rating = 1800;
   else if (avgLoss < 75) rating = 1600;
   else if (avgLoss < 100) rating = 1400;
   else if (avgLoss < 130) rating = 1200;
   else if (avgLoss < 170) rating = 1000;
-  else rating = 800;
 
   rating -= blunders * 140;
-  rating -= mistakes * 70;
-  rating -= inaccuracies * 15;
+  rating -= mistakes * 25;
+  rating -= inaccuracies * 6;
 
   if (blunders === 0) rating += 40;
-  if (blunders === 0 && mistakes === 0) rating += 40;
-  if (blunders === 0 && mistakes === 0 && inaccuracies <= 1 && validMoves.length >= 25) {
-    rating += 40;
-  }
+  if (blunders === 0 && mistakes <= 2) rating += 40;
+  if (blunders === 0 && mistakes <= 4 && validMoves.length >= 25) rating += 30;
 
   if (bigSwings === 0) rating += 40;
   if (bigSwings === 0 && mediumSwings <= 2) rating += 30;
   if (bigSwings === 0 && mediumSwings === 0) rating += 30;
 
-  if (
-    blunders === 0 &&
-    mistakes === 0 &&
-    inaccuracies <= 1 &&
-    bigSwings === 0 &&
-    validMoves.length >= 25
-  ) {
-    rating += 60;
-  }
-
-  if (opponentWeakness >= 7) rating -= 400;
-  else if (opponentWeakness >= 5) rating -= 300;
-  else if (opponentWeakness >= 3) rating -= 200;
-
-  if (blunders === 0 && mistakes === 0 && inaccuracies === 0) {
-    if (opponentWeakness >= 5) rating -= 120;
-    else if (opponentWeakness >= 3) rating -= 80;
-  }
+  if (opponentWeakness >= 9) rating -= 80;
+  else if (opponentWeakness >= 6) rating -= 50;
+  else if (opponentWeakness >= 3) rating -= 25;
 
   const isLoss =
     (side === "w" && result === "0-1") ||
     (side === "b" && result === "1-0");
 
-  if (isLoss && validMoves.length < 15 && blunders >= 1) rating -= 150;
-  if (isLoss && validMoves.length < 15 && mistakes >= 2) rating -= 80;
-  if (isLoss && blunders >= 2) rating -= 80;
+  if (isLoss && validMoves.length < 15 && blunders >= 1) rating -= 120;
+  if (isLoss && validMoves.length < 15 && mistakes >= 2) rating -= 70;
+  if (isLoss && blunders >= 2) rating -= 70;
 
-  if (validMoves.length < 25) rating -= 150;
+  if (validMoves.length < 25) rating -= 80;
+  if (validMoves.length < 25 && avgLoss < 15) rating -= 80;
 
-  if (validMoves.length < 25 && avgLoss < 15) {
-    rating -= 150;
-  }
+  if (rating > 2400) rating = 2400 + (rating - 2400) * 0.7;
+  if (rating > 2700) rating = 2700 + (rating - 2700) * 0.5;
 
-  if (
-    validMoves.length < 25 &&
-    blunders === 0 &&
-    mistakes === 0 &&
-    inaccuracies === 0
-  ) {
-    rating -= 150;
-  }
-
-  return Math.max(800, Math.min(2600, Math.round(rating)));
+  return Math.max(800, Math.min(3000, Math.round(rating)));
 }
 
 export function pluralize(count, singular, plural) {
@@ -176,8 +158,8 @@ export function generateGameSummary(analysis, result) {
   const totalMoves = analysis.length;
 
 
-  const whiteRating = estimatePlayerRating(whiteMoves, result, "w");
-  const blackRating = estimatePlayerRating(blackMoves, result, "b");
+  const whiteRating = estimatePlayerRating(analysis, result, "w");
+  const blackRating = estimatePlayerRating(analysis, result, "b");
 
   const validLossMoves = analysis.filter((m) => Number.isFinite(m.loss));
   const worstMove = validLossMoves.length
@@ -286,6 +268,7 @@ export function generateNarrativeSummary(analysis, result, getAdvantageSide) {
     Math.min(30, validPlayed.length)
   );
   const endSlice = validPlayed.slice(Math.min(30, validPlayed.length));
+
   const totalMoves = analysis.length;
   const openingEval = averageEval(openingSlice);
   const middleEval = averageEval(middleSlice);
@@ -310,8 +293,6 @@ export function generateNarrativeSummary(analysis, result, getAdvantageSide) {
   } else {
     openingText = "The opening stayed balanced, and neither side got a serious early advantage.";
   }
-
-
 
   if (totalMoves <= 10) {
     if (result === "1-0") {
@@ -341,6 +322,7 @@ export function generateNarrativeSummary(analysis, result, getAdvantageSide) {
   if (openingSide !== "equal" && middleSide !== "equal" && openingSide !== middleSide) {
     transitionText = "However, the balance of the game shifted during the middlegame.";
   }
+
   if (middleSide !== "equal" && finalSide !== "equal" && middleSide !== finalSide) {
     transitionText = "However, the game changed direction at a critical moment.";
   }
@@ -349,22 +331,48 @@ export function generateNarrativeSummary(analysis, result, getAdvantageSide) {
   if (biggestSwing && biggestSwing.san) {
     const sideText =
       biggestSwing.side === "w" || biggestSwing.side === "White" ? "White" : "Black";
+
     turningPointText = `The critical turning point came when ${sideText} played ${biggestSwing.san}, creating the biggest swing in the evaluation.`;
   }
 
+  const lastMove = analysis[analysis.length - 1];
+  const lastMoveSan = lastMove?.san || "";
+
+  const mateWinner = lastMoveSan.includes("#")
+    ? lastMove?.side === "w"
+      ? "White"
+      : "Black"
+    : null;
+
+  const previousEval = validPlayed[validPlayed.length - 2]?.playedEval ?? null;
+
+  const isSuddenDraw =
+    Number.isFinite(previousEval) &&
+    Number.isFinite(finalEval) &&
+    Math.abs(previousEval) > 300 &&
+    Math.abs(finalEval) < 30;
+
   let phaseText = "";
-  if (endEval != null) {
+
+  if (isSuddenDraw) {
+    phaseText = "The final phase was about a winning advantage slipping away into a draw.";
+  } else if (!mateWinner && endEval != null) {
     if (endEval > 300) {
-      phaseText = "The final phase was mainly about White converting an already favorable position.";
+      phaseText = "The final phase was mainly about White trying to convert an already favorable position.";
     } else if (endEval < -300) {
-      phaseText = "The final phase was mainly about Black converting an already favorable position.";
+      phaseText = "The final phase was mainly about Black trying to convert an already favorable position.";
     } else {
       phaseText = "Even in the later phase, the game still demanded accuracy from both sides.";
     }
   }
 
   let endingText = "";
-  if (result === "1-0") {
+
+  if (mateWinner) {
+    endingText = `In the end, ${mateWinner} converted the advantage with a quick checkmate.`;
+  } else if (isSuddenDraw || result === "1/2-1/2") {
+    endingText = "In the end, neither side managed to turn the game into a full point.";
+  } else if (result === "1-0") {
     endingText =
       finalEval != null && finalEval > 250
         ? "From there, White kept the upper hand and converted the game successfully."
@@ -378,7 +386,9 @@ export function generateNarrativeSummary(analysis, result, getAdvantageSide) {
     endingText = "In the end, neither side managed to turn the game into a full point.";
   }
 
-  return `${openingText} ${middlegameText} ${transitionText} ${turningPointText} ${phaseText} ${endingText}`.trim();
+  return `${openingText} ${middlegameText} ${transitionText} ${turningPointText} ${phaseText} ${endingText}`
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function calculateAccuracy(moves) {

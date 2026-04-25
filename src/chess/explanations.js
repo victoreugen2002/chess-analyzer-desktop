@@ -48,31 +48,47 @@ function getMaterialGainText({ fenBefore, fenAfter, side }) {
   const before = evaluateMaterial(fenBefore);
   const after = evaluateMaterial(fenAfter);
 
+  const player = side === "w" ? "white" : "black";
   const opponent = side === "w" ? "black" : "white";
-  const gain = before[opponent] - after[opponent];
+
+  const beforeDiff = before[player] - before[opponent];
+  const afterDiff = after[player] - after[opponent];
+  const gain = afterDiff - beforeDiff;
 
   if (gain >= 8.5) return "wins the queen";
   if (gain >= 4.5) return "wins a rook";
-  if (gain >= 2.5) return "wins a piece";
-  if (gain >= 1) return "wins a pawn";
+  // if (gain >= 2.5) return "wins a piece"; // scoatem pentru v1
+  // if (gain >= 1 && gain < 2.5) return "wins a pawn";
 
   return "";
 }
 
-export function getLabel(loss, beforeEval) {
+export function getLabel(loss, beforeEval, bestEval, playedEval) {
+  const bestIsMate = String(bestEval).includes("Mate");
+  const playedIsMate = String(playedEval).includes("Mate");
+
+  // If both lines are mate lines, don't punish alternative winning routes.
+  if (bestIsMate && playedIsMate) return "Good";
+
   if (!Number.isFinite(loss)) return "Good";
 
   const absEval = Math.abs(beforeEval || 0);
 
+  // Huge swing / allowing mate should always be a blunder.
+  if (playedIsMate || loss >= 1000) return "Blunder";
+
+  // In already decisive positions, be less harsh unless the swing is massive.
   if (absEval > 400) {
-    if (loss >= 500) return "Mistake";
-    if (loss >= 200) return "Inaccuracy";
+    if (loss >= 500) return "Blunder";
+    if (loss >= 250) return "Mistake";
+    if (loss >= 100) return "Inaccuracy";
     return "Good";
   }
 
   if (loss >= 250) return "Blunder";
   if (loss >= 150) return "Mistake";
   if (loss >= 70) return "Inaccuracy";
+
   return "Good";
 }
 
@@ -169,7 +185,11 @@ function isCurrentMoveRecapture({ san, previousSan }) {
   const currentTarget = san.split("x")[1]?.replace(/[+#]/g, "").slice(-2);
   const previousTarget = previousSan.split("x")[1]?.replace(/[+#]/g, "").slice(-2);
 
-  return !!(currentTarget && previousTarget && currentTarget === previousTarget);
+  return !!(
+    currentTarget &&
+    previousTarget &&
+    currentTarget === previousTarget
+  );
 }
 
 function squareToCoords(square) {
@@ -318,7 +338,7 @@ function getUndefendedTargetText({ fenBefore, side, san }) {
     }
 
     const targetLabel = getPieceLabel(bestTarget.piece);
-    return `It creates a threat by attacking the undefended ${targetLabel} on ${bestTarget.square}.`;
+    return `It attacks the ${targetLabel} on ${bestTarget.square}.`;
   } catch {
     return "";
   }
@@ -414,8 +434,8 @@ export function buildWhyText({
   }
 
   const recaptureInfo = getRecaptureInfo({ san, playedLineText });
-  const isCurrentRecapture = isCurrentMoveRecapture({ san, previousSan });
-  const isAnyRecapture = isCurrentRecapture || !!recaptureInfo;
+  const isCurrentRecapture = isCurrentMoveRecapture({san, previousSan,  });
+  const isAnyRecapture = isCurrentRecapture;
 
   if (label === "Good") {
     if (isCapture && isCheck) {
@@ -431,8 +451,6 @@ export function buildWhyText({
         const gainText = getMaterialGainText({ fenBefore, fenAfter, side });
         if (gainText) {
           reasons.push(`It ${gainText}.`);
-        } else {
-          reasons.push("It wins or exchanges material on favorable terms.");
         }
       }
     } else if (isCastle) {
@@ -463,7 +481,7 @@ export function buildWhyText({
   });
 
   if (recaptureText) {
-    reasons.push(recaptureText);
+    return recaptureText;
   }
 
   if (fenBefore && fenAfter) {
@@ -500,7 +518,7 @@ export function buildWhyText({
     }
 
     if (!isCapture && materialDrop < 1 && cpLoss >= 800) {
-      reasons.push("It allows a decisive attack that leads to checkmate.");
+      reasons.push("It allows a decisive attack with a winning advantage.");
     } else if (!isCapture && materialDrop < 1 && cpLoss >= 220 && wasReasonableBefore) {
       reasons.push("It allows a tactical sequence that wins material for the opponent.");
     }
@@ -534,6 +552,218 @@ export function buildWhyText({
   return reasons.join(" ");
 }
 
+export function getOpeningInfo(moves) {
+  if (!Array.isArray(moves) || !moves.length) return null;
+
+  const sans = moves
+    .map((m) => (typeof m === "string" ? m : m?.san))
+    .filter(Boolean)
+    .map((san) => san.replace(/[+#?!]+/g, "").replace(/\s+/g, ""));
+
+  const line = sans.join(" ");
+
+  const openings = [
+    {
+      name: "Ruy Lopez: Exchange Variation",
+      patterns: ["e4 e5 Nf3 Nc6 Bb5 a6 Bxc6"],
+      description:
+        "White gives up the bishop pair to damage Black’s pawn structure.\nPlan: simplify pieces and target Black’s doubled pawns.",
+    },
+    {
+      name: "Ruy Lopez: Berlin Defense",
+      patterns: ["e4 e5 Nf3 Nc6 Bb5 Nf6"],
+      description:
+        "Black challenges the e4 pawn early and aims for a solid structure.\nPlan: develop smoothly and look for small positional advantages.",
+    },
+    {
+      name: "Ruy Lopez",
+      patterns: ["e4 e5 Nf3 Nc6 Bb5"],
+      description:
+        "White pressures the knight on c6 and fights for the center indirectly.\nPlan: complete development and build central control.",
+    },
+    {
+      name: "Italian Game",
+      patterns: ["e4 e5 Nf3 Nc6 Bc4"],
+      description:
+        "White develops quickly and targets the weak f7 square.\nPlan: castle early and coordinate pieces for an attack.",
+    },
+    {
+      name: "Scotch Game",
+      patterns: ["e4 e5 Nf3 Nc6 d4"],
+      description:
+        "White opens the center quickly and creates active play.\nPlan: develop fast and use open lines actively.",
+    },
+    {
+      name: "Sicilian Defense: Najdorf",
+      patterns: ["e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6"],
+      description:
+        "Black creates an unbalanced and tactical position.\nPlan: be ready for sharp play and control key central squares.",
+    },
+    {
+      name: "Sicilian Defense",
+      patterns: ["e4 c5"],
+      description:
+        "Black fights for the center from the side.\nPlan: develop quickly and look for tactical chances.",
+    },
+    {
+      name: "French Defense",
+      patterns: ["e4 e6"],
+      description:
+        "Black builds a solid pawn structure and challenges the center.\nPlan: improve piece placement behind the pawn chain.",
+    },
+    {
+      name: "Caro-Kann Defense",
+      patterns: ["e4 c6"],
+      description:
+        "Black aims for a safe and solid setup.\nPlan: develop calmly and look for gradual counterplay.",
+    },
+    {
+      name: "Queen's Gambit Declined",
+      patterns: ["d4 d5 c4 e6"],
+      description:
+        "Black maintains a strong center and solid structure.\nPlan: develop pieces and contest central control.",
+    },
+    {
+      name: "Queen's Gambit Accepted",
+      patterns: ["d4 d5 c4 dxc4"],
+      description:
+        "Black accepts the pawn and challenges White’s center.\nPlan: develop quickly and regain central control.",
+    },
+    {
+      name: "Queen's Gambit",
+      patterns: ["d4 d5 c4"],
+      description:
+        "White challenges the center with the c-pawn.\nPlan: build strong central control and active pieces.",
+    },
+    {
+      name: "King's Indian Defense",
+      patterns: ["d4 Nf6 c4 g6 Nc3 Bg7"],
+      description:
+        "Black allows White to build a center and plans to attack it.\nPlan: prepare counterplay and strike at the right moment.",
+    },
+    {
+      name: "London System",
+      patterns: ["d4 d5 Bf4", "d4 Nf6 Bf4"],
+      description:
+        "White uses a simple and solid setup.\nPlan: develop smoothly and maintain a stable position.",
+    },
+    {
+      name: "English Opening",
+      patterns: ["c4"],
+      description:
+        "White controls the center from the flank.\nPlan: stay flexible and adapt your setup.",
+    },
+    {
+      name: "King's Pawn Opening",
+      patterns: ["e4"],
+      description:
+        "White immediately fights for the center.\nPlan: develop quickly and use open lines.",
+    },
+    {
+      name: "Queen's Pawn Opening",
+      patterns: ["d4"],
+      description:
+        "White takes central space and builds a solid position.\nPlan: develop steadily and control the center.",
+    },
+  ];
+
+  let bestMatch = null;
+
+  for (const opening of openings) {
+    for (const pattern of opening.patterns) {
+      if (line.startsWith(pattern)) {
+        const length = pattern.split(" ").length;
+
+        if (!bestMatch || length > bestMatch.length) {
+          bestMatch = { ...opening, matchedPattern: pattern, length };
+        }
+      }
+    }
+  }
+
+  if (!bestMatch) return null;
+
+  return {
+    name: bestMatch.name,
+    description: bestMatch.description,
+    matchedPattern: bestMatch.matchedPattern,
+  };
+}
+
+export function checkOpeningPrinciples(moveIndex, moves, loss = 0) {
+  const cpLoss = Number(loss || 0);
+  const messages = [];
+
+  if (!moves || !moves.length) return messages;
+  if (cpLoss < 20) return messages;
+
+  const move = moves[moveIndex];
+  if (!move) return messages;
+
+  // aplicăm doar în opening
+  if (moveIndex > 20) return messages;
+
+  const san = move.san;
+
+  const isCapture = san?.includes("x");
+  const isCheck = san?.includes("+");
+  const isCastle = san === "O-O" || san === "O-O-O";
+  const isPromotion = san?.includes("=");
+  const isMate = san?.includes("#");
+  const isQuiet = !isCapture && !isCheck && !isCastle && !isPromotion && !isMate;
+
+  if (san === "e3" || san === "d3") {
+    messages.push("This is a passive opening move because it does not challenge the center directly and can slow development.");
+  }
+
+  if (san === "f3" || san === "f6") {
+    messages.push("This move weakens the king and blocks natural development.");
+  }
+
+  const prevMove = moveIndex >= 2 ? moves[moveIndex - 2] : null;
+
+  if (
+    prevMove &&
+    prevMove.san[0] === san[0] &&
+    /[NBRQK]/.test(san[0]) &&
+    !isCapture &&
+    !isCheck &&
+    cpLoss >= 20
+  ) {
+    messages.push("Moving the same piece again can slow development.");
+  }
+
+  if (san.startsWith("Q") && moveIndex < 10) {
+    messages.push("Bringing the queen out early can make it a target.");
+  }
+
+  if (san.startsWith("K") && moveIndex < 10 && !isCastle) {
+    messages.push("Moving the king early is risky and leaves it exposed.");
+  }
+
+  const developmentMoves = moves
+    .slice(0, moveIndex + 1)
+    .filter((m) => /^[NBR]/.test(m.san)).length;
+
+  if (moveIndex >= 8 && developmentMoves <= 2 && isQuiet) {
+    messages.push("Developing pieces faster would make the position easier to play.");
+  }
+
+  const hasCastled = moves
+    .slice(0, moveIndex + 1)
+    .some((m) => m.san === "O-O" || m.san === "O-O-O");
+
+  const kingMoved = moves
+    .slice(0, moveIndex + 1)
+    .some((m) => m.san.startsWith("K"));
+
+  if (moveIndex >= 16 && !hasCastled && !kingMoved && isQuiet) {
+    messages.push("Castling would improve king safety.");
+  }
+
+  return messages;
+}
+
 export function explainMove({
   label,
   loss,
@@ -547,6 +777,8 @@ export function explainMove({
   bestLineText,
   playedLineText,
   previousSan,
+  moveIndex,
+  moves,
 }) {
   const sideText = side === "w" ? "White" : "Black";
   const isCapture = san?.includes("x");
@@ -557,6 +789,8 @@ export function explainMove({
   const isQuiet = !isCapture && !isCheck && !isCastle && !isPromotion && !isMate;
   const isKingMove = /^K/.test(san || "");
 
+  const principles = checkOpeningPrinciples(moveIndex, moves, loss);
+
   const quietFallbacks = [
     "This is a solid move.",
     "This is a reasonable move.",
@@ -566,7 +800,7 @@ export function explainMove({
     "This is a sensible choice.",
     "This move maintains the balance.",
     "This is a calm move.",
-    "This move follows the position’s demands."
+    "This move follows the position’s demands.",
   ];
 
   let lastFallback = "";
@@ -582,10 +816,16 @@ export function explainMove({
   }
 
   const cpLoss = Number(loss || 0);
+
   const numericBeforeEval =
-    beforeEval != null && !Number.isNaN(Number(beforeEval)) ? Number(beforeEval) : null;
+    beforeEval != null && !Number.isNaN(Number(beforeEval))
+      ? Number(beforeEval)
+      : null;
+
   const numericAfterEval =
-    afterEval != null && !Number.isNaN(Number(afterEval)) ? Number(afterEval) : null;
+    afterEval != null && !Number.isNaN(Number(afterEval))
+      ? Number(afterEval)
+      : null;
 
   const evalChange =
     numericBeforeEval != null && numericAfterEval != null
@@ -607,7 +847,23 @@ export function explainMove({
     Math.abs(before) >= 99000 &&
     Math.abs(after) >= 99000
   ) {
-    return `${opener} This move still leads to checkmate, but it misses a faster win.`;
+    if (side === "w" && before > 0) {
+      return `${opener} This move still leads to checkmate, but it misses a faster win.`;
+    }
+
+    if (side === "b" && before < 0) {
+      return `${opener} This move still leads to checkmate, but it misses a faster win.`;
+    }
+
+    if (side === "w" && before < 0) {
+      return `${opener} This move is the best available, but the position remains lost.`;
+    }
+
+    if (side === "b" && before > 0) {
+      return `${opener} This move is the best available, but the position remains lost.`;
+    }
+
+    return `${opener} The position remains completely decisive.`;
   }
 
   let tone = "";
@@ -621,16 +877,9 @@ export function explainMove({
     } else if (isCheck) {
       tone = "This is an active check.";
     } else if (isCapture) {
-      const recaptureInfo = getRecaptureInfo({
-        san,
-        playedLineText: playedLineText
-          ? uciLineToSan({ fen: fenBefore, uciLine: playedLineText, maxMoves: 8 })
-          : "",
-      });
-
       const isCurrentRecapture = isCurrentMoveRecapture({ san, previousSan });
 
-      if (isCurrentRecapture || recaptureInfo) {
+      if (isCurrentRecapture) {
         tone = "This is a natural recapture.";
       } else {
         tone = "This is a sound capture.";
@@ -640,10 +889,18 @@ export function explainMove({
     } else if (isPromotion) {
       tone = "This is a decisive promotion.";
     } else if (isQuiet) {
-      if (isKingMove && isLosingPositionForSide(side, numericBeforeEval)) {
+      if (san.match(/[NB].*[18]$/)) {
+        tone = "This move brings the piece back to a safer square.";
+      } else if (isKingMove && isLosingPositionForSide(side, numericBeforeEval)) {
         tone = "This is a necessary defensive move.";
       } else if (/^[NB]/.test(san || "")) {
-        tone = "This is a natural developing move.";
+        const prevMove = moveIndex >= 2 ? moves[moveIndex - 2] : null;
+
+        if (prevMove && prevMove.san[0] === san[0]) {
+          tone = "This move repositions the piece.";
+        } else {
+          tone = "This is a natural developing move.";
+        }
       } else {
         tone = getRandomFallback();
       }
@@ -692,9 +949,26 @@ export function explainMove({
     }
   }
 
-  const bestLineTextSan = bestLineText
-    ? uciLineToSan({ fen: fenBefore, uciLine: bestLineText, maxMoves: 8 })
-    : "";
+  // center pawns (d/e)
+  if (san.match(/^[de]/) && cpLoss < 30 && !isCapture) {
+    tone = "This pawn move gains space and contributes to the position.";
+  }
+
+  // flank pawns (a/h)
+  if (san.match(/^[ah]/) && cpLoss < 30 && !isCapture) {
+    tone = "This move challenges the opponent's piece and forces a decision.";
+  }
+
+  // slow pawn move, excluding central pawns and captures
+  if (
+    san.match(/^[a-cf-h]/) &&
+    cpLoss >= 40 &&
+    label !== "Blunder" &&
+    label !== "Mistake" &&
+    !isCapture
+  ) {
+    tone = "This pawn move is somewhat slow and does not directly help development.";
+  }
 
   const playedLineTextSan = playedLineText
     ? uciLineToSan({ fen: fenBefore, uciLine: playedLineText, maxMoves: 8 })
@@ -728,21 +1002,17 @@ export function explainMove({
     normalizedBest &&
     normalizedBest !== normalizedPlayed;
 
-  const bestText = shouldShowBestMove
-    ? ` A better move was ${bestHuman}.`
-    : "";
+  const bestText = shouldShowBestMove ? ` A better move was ${bestHuman}.` : "";
 
-  let lineText = "";
-  if (bestLineTextSan && label !== "Good") {
-    lineText += ` A stronger line was: ${bestLineTextSan}.`;
-  }
-  if (playedLineTextSan && cpLoss >= 120) {
-    lineText += ` After the move: ${playedLineTextSan}.`;
-  }
+  const principlesText =
+    label === "Blunder" || label === "Mistake"
+      ? ""
+      : principles.length
+        ? principles[0]
+        : "";
 
-  const middleParts = [tone, whyText].filter(Boolean).join(" ");
+  const normalText = [tone, whyText].filter(Boolean).join(" ");
+  const mainText = principlesText || normalText;
 
-  return `${opener} ${middleParts}${bestText}${lineText}`
-    .replace(/\s+/g, " ")
-    .trim();
+  return `${opener} ${mainText}${bestText}`.replace(/\s+/g, " ").trim();
 }
