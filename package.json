@@ -44,6 +44,12 @@
       "electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "electron/engines",
+        "to": "engines"
+      }
+    ],
     "extraMetadata": {
       "main": "electron/main.js"
     },

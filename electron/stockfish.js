@@ -1,3 +1,4 @@
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 
@@ -19,7 +20,9 @@ class StockfishEngine {
     if (this.pendingStart) return this.pendingStart;
 
     this.pendingStart = new Promise((resolve, reject) => {
-      const enginePath = path.join(__dirname, "engines", "stockfish.exe");
+      const enginePath = app.isPackaged
+      ? path.join(process.resourcesPath, "engines", "stockfish.exe")
+      : path.join(__dirname, "engines", "stockfish.exe");
       this.engine = spawn(enginePath);
 
       this.engine.stdout.on("data", (data) => {
