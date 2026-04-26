@@ -546,7 +546,8 @@ export default function App() {
           </p>
 
           <p className="intro-hint">
-            Paste a PGN or load an example to start analyzing instantly.
+            Press Start Analysis to start with an example.<br></br>
+            Then paste a PGN to start analyzing your own game.
           </p>
 
           <div className="intro-features">
@@ -557,18 +558,12 @@ export default function App() {
           </div>
 
           <div className="intro-actions">
-            <button onClick={() => {
-              setPgn("");
-              setStarted(true);
-            }}>
-              Start new game
-            </button>
 
             <button onClick={() => {
               setPgn(START_PGN);
               setStarted(true);
             }}>
-              Load example
+              Start Analysis
             </button>
           </div>
 
@@ -882,12 +877,7 @@ export default function App() {
                       <div className="stat-box"><span>Centipawn loss:</span> {currentAnalysis ? Math.round(currentAnalysis.loss) : "—"}</div>
                     </div>
 
-                    <div className="pv-box">
-                      <span>Principal variation:</span>{" "}
-                      {currentAnalysis?.pv
-                        ? uciLineToSanLine(currentAnalysis.fenBefore, currentAnalysis.pv, 12)
-                        : "—"}
-                    </div>
+
                       {currentAnalysis && currentAnalysis.label !== "Good" ? (
                         <>
                           <div

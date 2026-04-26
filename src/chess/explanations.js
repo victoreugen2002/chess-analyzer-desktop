@@ -121,11 +121,13 @@ function getPieceCountsFromFen(fen) {
   return counts;
 }
 
-function getLostPieceText({ fenBefore, fenAfter, side }) {
+function getLostPieceText({ fenBefore, fenAfter, side, san  }) {
   if (!fenBefore || !fenAfter || !side) return "";
 
   const before = getPieceCountsFromFen(fenBefore);
   const after = getPieceCountsFromFen(fenAfter);
+
+  const isPromotion = san?.includes("=");
 
   const mover = side === "w" ? "white" : "black";
 
@@ -141,7 +143,7 @@ function getLostPieceText({ fenBefore, fenAfter, side }) {
   if (diff.r > 0) return "loses a rook";
   if (diff.n > 0) return "loses a knight";
   if (diff.b > 0) return "loses a bishop";
-  if (diff.p > 0) return "loses a pawn";
+  if (!isPromotion && diff.p > 0) return "loses a pawn";
 
   return "";
 }
@@ -509,7 +511,7 @@ export function buildWhyText({
       side === "w" ? "b" : "w"
     );
 
-    const lostPieceText = getLostPieceText({ fenBefore, fenAfter, side });
+    const lostPieceText = getLostPieceText({ fenBefore, fenAfter, side, san });
 
     if (lostPieceText) {
       reasons.push(`It ${lostPieceText}.`);
@@ -791,6 +793,8 @@ export function explainMove({
 
   const principles = checkOpeningPrinciples(moveIndex, moves, loss);
 
+
+
   const quietFallbacks = [
     "This is a solid move.",
     "This is a reasonable move.",
@@ -955,7 +959,7 @@ export function explainMove({
   }
 
   // flank pawns (a/h)
-  if (san.match(/^[ah]/) && cpLoss < 30 && !isCapture) {
+  if (san.match(/^[ah]/) && cpLoss < 30 && !isCapture && !isPromotion) {
     tone = "This move challenges the opponent's piece and forces a decision.";
   }
 
