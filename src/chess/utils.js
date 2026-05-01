@@ -1,4 +1,7 @@
 import { Chess } from "chess.js";
+import { getPieceValue } from "./core/pieces";
+
+
 
 export function fenToBoardRows(fen) {
   const placement = fen.split(" ")[0];
@@ -16,35 +19,6 @@ export function fenToBoardRows(fen) {
   });
 }
 
-export function getPieceValue(piece) {
-  if (!piece) return 0;
-
-  const type = piece[1];
-
-  if (type === "p") return 1;
-  if (type === "n") return 3;
-  if (type === "b") return 3;
-  if (type === "r") return 5;
-  if (type === "q") return 9;
-  return 0;
-}
-
-export function evaluateMaterial(fen) {
-  const rows = fenToBoardRows(fen);
-  let white = 0;
-  let black = 0;
-
-  rows.forEach((row) => {
-    row.forEach((piece) => {
-      if (!piece) return;
-      const value = getPieceValue(piece);
-      if (piece[0] === "w") white += value;
-      else black += value;
-    });
-  });
-
-  return { white, black, diff: white - black };
-}
 
 export function findKing(rows, color) {
   for (let r = 0; r < 8; r++) {
@@ -165,4 +139,98 @@ export function uciLineToSanLine(fen, line, maxMoves = 8) {
   } catch {
     return line;
   }
+}
+
+
+
+
+export function squareToCoords(square) {
+  return {
+    file: square.charCodeAt(0) - 97,
+    rank: 8 - Number(square[1]),
+  };
+}
+
+export function coordsToSquare(file, rank) {
+  return String.fromCharCode(97 + file) + (8 - rank);
+}
+
+export function getAttackedSquaresByPiece(chess, square) {
+  const piece = chess.get(square);
+  if (!piece) return [];
+
+  const { file, rank } = squareToCoords(square);
+  const squares = [];
+
+  const add = (f, r) => {
+    if (f >= 0 && f < 8 && r >= 0 && r < 8) {
+      squares.push(coordsToSquare(f, r));
+    }
+  };
+
+  if (piece.type === "p") {
+    const dir = piece.color === "w" ? -1 : 1;
+    add(file - 1, rank + dir);
+    add(file + 1, rank + dir);
+    return squares;
+  }
+
+  if (piece.type === "n") {
+    [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]]
+      .forEach(([df, dr]) => add(file + df, rank + dr));
+    return squares;
+  }
+
+  if (piece.type === "k") {
+    [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]]
+      .forEach(([df, dr]) => add(file + df, rank + dr));
+    return squares;
+  }
+
+  const directions = [];
+
+  if (piece.type === "b" || piece.type === "q") {
+    directions.push([1,1], [1,-1], [-1,1], [-1,-1]);
+  }
+
+  if (piece.type === "r" || piece.type === "q") {
+    directions.push([1,0], [-1,0], [0,1], [0,-1]);
+  }
+
+  for (const [df, dr] of directions) {
+    let f = file + df;
+    let r = rank + dr;
+
+    while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+      const sq = coordsToSquare(f, r);
+      squares.push(sq);
+
+      if (chess.get(sq)) break;
+
+      f += df;
+      r += dr;
+    }
+  }
+
+  return squares;
+}
+
+export function isSquareDefended(chess, square, defenderColor) {
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const ranks = ["1", "2", "3", "4", "5", "6", "7", "8"];
+
+  for (const file of files) {
+    for (const rank of ranks) {
+      const from = `${file}${rank}`;
+      const piece = chess.get(from);
+
+      if (!piece || piece.color !== defenderColor) continue;
+
+      if (getAttackedSquaresByPiece(chess, from).includes(square)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }

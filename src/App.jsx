@@ -1,10 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Chess } from "chess.js";
-import { fenToBoardRows, evaluateMaterial, evaluateKingShield, moveToHuman, uciLineToSan, uciLineToSanLine, uciMoveToSan} from "./chess/utils";
-import { formatEval, getLabel, getAdvantageSide, explainMove, getOpeningInfo} from "./chess/explanations";
+import { analyzeMove } from "./chess/analysis/analyzeMove";
+import { buildMoveObjectsFromPgn } from "./chess/pgn/pgnParser";
+import { getMoveSymbol, getMoveBadgeClass, getProgressWidth, getBoardPixelSize } from "./chess/ui/uiHelpers";
+import { buildAnalysisResults } from "./chess/analysis/analysisBuilder";
+import { uciLineToSanLine } from "./chess/utils";
+
+import { formatEval } from "./chess/explain/evalFormat";
+import { getAdvantageSide } from "./chess/explain/labels";
+import { getOpeningInfo } from "./chess/explain/openingInfo";
 import { generateGameTitle, generateGameSummary, generateNarrativeSummary, estimatePlayerRating, calculateAccuracy } from "./chess/gameSummary";
+
 import Board from "./components/Board";
 import "./app.css";
+
 import moveSound from "./assets/sounds/move.mp3";
 import captureSound from "./assets/sounds/capture.mp3";
 
@@ -39,117 +47,6 @@ const PIECE_PATHS = {
   k: "M46 16h8v10h10v8H54v10h-8V34H36v-8h10V16Zm-7 33h22v10h8v8H31v-8h8V49Zm-8 22h38v8H31Zm-6 12h50v8H25Z",
 };
 
-function sanToSpeech(san) {
-  if (!san) return "";
-
-  const pieceMap = {
-    K: "King",
-    Q: "Queen",
-    R: "Rook",
-    B: "Bishop",
-    N: "Knight",
-  };
-
-  let text = san;
-
-  // detect piece
-  let piece = "Pawn";
-  if (pieceMap[san[0]]) {
-    piece = pieceMap[san[0]];
-    text = san.slice(1);
-  }
-
-  // capture
-  const isCapture = san.includes("x");
-
-  // check / mate
-  const isCheck = san.includes("+");
-  const isMate = san.includes("#");
-
-  // remove symbols
-  text = text.replace("x", "").replace("+", "").replace("#", "");
-
-  let result = `${piece} to ${text}`;
-
-  if (isCapture) {
-    result = `${piece} captures on ${text}`;
-  }
-
-  if (isMate) {
-    result += " checkmate";
-  } else if (isCheck) {
-    result += " check";
-  }
-
-  return result;
-}
-
-
-function getMoveSymbol(label) {
-  if (label === "Blunder") return "??";
-  if (label === "Mistake") return "?";
-  if (label === "Inaccuracy") return "?!";
-  return "";
-}
-function getMoveBadgeClass(label) {
-  if (label === "Blunder") return "badge badge--blunder";
-  if (label === "Mistake") return "badge badge--mistake";
-  if (label === "Inaccuracy") return "badge badge--inaccuracy";
-  return "";
-}
-
-function getProgressWidth(cp) {
-  if (cp == null || Number.isNaN(cp)) return 50;
-  const normalized = Math.max(-600, Math.min(600, cp));
-  return 50 + normalized / 12;
-}
-
-
-
-function getHeaders(chess) {
-  if (typeof chess.getHeaders === "function") return chess.getHeaders();
-  if (typeof chess.header === "function") return chess.header();
-  return {};
-}
-
-function loadPgnStrict(chess, pgn) {
-  const result = chess.loadPgn(pgn);
-  if (result === false) throw new Error("Invalid PGN");
-}
-
-function buildMoveObjectsFromPgn(pgn) {
-  const chess = new Chess();
-  loadPgnStrict(chess, pgn);
-  const verboseMoves = chess.history({ verbose: true });
-  const replay = new Chess();
-
-  const moves = verboseMoves.map((move, index) => {
-    const fenBefore = replay.fen();
-    const side = replay.turn();
-    replay.move(move);
-    const fenAfter = replay.fen();
-
-    return {
-      id: index,
-      ply: index + 1,
-      fullmove: Math.ceil((index + 1) / 2),
-      side,
-      san: move.san,
-      lan: `${move.from}${move.to}${move.promotion || ""}`,
-      fenBefore,
-      fenAfter,
-    };
-  });
-
-  const headers = getHeaders(chess);
-
-  return {
-    headers,
-    result: headers.Result || "*",
-    moves,
-    initialFen: new Chess().fen(),
-  };
-}
 
 
 function getPieceValue(piece) {
@@ -165,8 +62,6 @@ function getPieceValue(piece) {
   return 0;
 }
 
-
-
 function findKing(rows, color) {
   for (let r = 0; r < 8; r += 1) {
     for (let c = 0; c < 8; c += 1) {
@@ -178,16 +73,7 @@ function findKing(rows, color) {
   return null;
 }
 
-function getBoardPixelSize(viewportWidth) {
-  const vh = window.innerHeight;
 
-  if (!viewportWidth) return 520;
-
-  return Math.min(
-    viewportWidth - 80,   // limitează pe lățime
-    vh - 430              // limitează pe înălțime
-  );
-}
 function runSelfTests() {
   const results = [];
   try {
@@ -368,55 +254,13 @@ export default function App() {
       const raw = await window.engineApi.analyzeGame(gameData.moves, depth);
 
 
-
-      const results = raw.map((item, index, arr) => {
-        const bestMove = item.bestMove ?? null;
-        const safeLoss = Number.isFinite(item.loss) ? item.loss : null;
-
-        const label = getLabel(
-          safeLoss,
-          item.bestEval,
-          item.bestEval,
-          item.playedEval
-        );
-
-        const previousSan = index > 0 ? arr[index - 1]?.san ?? null : null;
-
-        return {
-          ply: item.ply,
-          side: item.side,
-          san: item.san,
-          fenBefore: item.fenBefore,
-          fenAfter: item.fenAfter,
-          bestMove,
-          bestLine: item.bestLine ?? item.pv ?? null,
-          pv: item.pv ?? null,
-          playedLine: item.playedLine ?? null,
-          bestContinuation: item.bestLine ?? item.pv ?? null,
-          bestEval: item.bestEval ?? null,
-          playedEval: item.playedEval ?? null,
-          loss: safeLoss,
-          lan: item.lan ?? gameData.moves[index]?.lan ?? null,
-          label,
-
-          explanation: explainMove({
-            label,
-            loss: safeLoss,
-            san: item.san,
-            bestMove,
-            beforeEval: item.bestEval ?? null,
-            afterEval: item.playedEval ?? null,
-            side: item.side,
-            fenBefore: item.fenBefore,
-            fenAfter: item.fenAfter,
-            bestLineText: item.bestLine ?? item.pv ?? null,
-            playedLineText: item.playedLine ?? null,
-            previousSan,
-            moveIndex: index,
-            moves: gameData.moves,
-          }),
-        };
-      });
+      const results = raw.map((item, index) =>
+        analyzeMove({
+          ...item,
+          moves: gameData.moves,
+          moveIndex: index,
+        })
+      );
       
       setAnalysis(results);
     } catch (err) {
@@ -794,7 +638,7 @@ export default function App() {
                     const whiteAnalysis = white ? analysisMap.get(white.ply) : null;
                     const blackAnalysis = black ? analysisMap.get(black.ply) : null;
 
-                    console.log("WHITE PV:", whiteAnalysis?.bestContinuation);
+
 
                     return (
                     <React.Fragment key={idx}>
