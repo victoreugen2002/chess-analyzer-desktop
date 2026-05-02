@@ -1,5 +1,5 @@
 import { moveToHuman } from "../utils";
-import { buildCoachMessage } from "../messageBuilder";
+import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName } from "../core/pieces";
 
 function getSecondarySignal(detections, primary) {

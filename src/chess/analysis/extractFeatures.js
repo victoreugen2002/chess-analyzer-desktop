@@ -1,8 +1,8 @@
 import { Chess } from "chess.js";
 
-import { isAttackingMove, getAttackedEnemyPieces } from "./features/attacks";
-import { getHangingPieces } from "./features/hangingPieces";
-import { getBatteryPatterns } from "./features/tactics";
+import { getAttackedEnemyPieces } from "../features/attacks";
+import { getHangingPieces } from "../features/hangingPieces";
+import { getBatteryPatterns } from "../features/tactics";
 
 function sameBatteryPattern(a, b) {
   return (
@@ -29,7 +29,7 @@ export function extractFeatures({ fenBefore, fenAfter, san, side }) {
     capturedPiece = move?.captured || null;
   } catch {}
 
-  const isAttack = isAttackingMove(new Chess(fenBefore), san, side);
+
   const attackedEnemyPieces = getAttackedEnemyPieces(fenBefore, san, side);
 
   const ownHangingBefore = getHangingPieces(fenBefore, side);
@@ -65,7 +65,6 @@ export function extractFeatures({ fenBefore, fenAfter, san, side }) {
     to,
     capturedPiece,
 
-    isAttack,
     attackedEnemyPieces,
 
     ownHangingPieces,

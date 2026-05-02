@@ -1,4 +1,4 @@
-import { getPieceName } from "./core/pieces";
+import { getPieceName } from "../core/pieces";
 
 function formatTarget(t) {
   const name = t.name || getPieceName(t.piece?.type || t.piece) || "piece";

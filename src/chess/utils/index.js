@@ -1,7 +1,4 @@
 import { Chess } from "chess.js";
-import { getPieceValue } from "./core/pieces";
-
-
 
 export function fenToBoardRows(fen) {
   const placement = fen.split(" ")[0];
@@ -18,7 +15,6 @@ export function fenToBoardRows(fen) {
     return squares;
   });
 }
-
 
 export function findKing(rows, color) {
   for (let r = 0; r < 8; r++) {

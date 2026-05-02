@@ -1,5 +1,5 @@
-import { extractFeatures } from "../features";
-import { runDetectors } from "../core/runDetectors";
+import { extractFeatures } from "./extractFeatures";
+import { runDetectors } from "./runDetectors";
 import { explainMove } from "../explain/explainMove";
 import { getLabelFromEval  } from "../explain/labels";
 

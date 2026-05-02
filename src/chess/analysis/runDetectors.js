@@ -136,12 +136,12 @@ export function runDetectors(features) {
       ...features,
       chessAfter,
       move: playedMove,
-      san: features.san,
-      moveIndex: features.moveIndex,
+
     }),
 
-    detectHangingPiece(features),
     detectMaterialLoss(features),
+    detectHangingPiece(features),
+
 
   ].filter(Boolean);
 

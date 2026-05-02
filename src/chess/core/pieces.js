@@ -17,7 +17,6 @@ export const PIECE_NAMES = {
 };
 
 export function getPieceName(piece) {
-  console.log("getPieceName input:", piece);
   if (!piece) return "";
 
   const type = typeof piece === "string" ? piece : piece.type;

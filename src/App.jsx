@@ -8,10 +8,10 @@ import { uciLineToSanLine } from "./chess/utils";
 import { formatEval } from "./chess/explain/evalFormat";
 import { getAdvantageSide } from "./chess/explain/labels";
 import { getOpeningInfo } from "./chess/explain/openingInfo";
-import { generateGameTitle, generateGameSummary, generateNarrativeSummary, estimatePlayerRating, calculateAccuracy } from "./chess/gameSummary";
+import { generateGameTitle, generateGameSummary, generateNarrativeSummary, estimatePlayerRating, calculateAccuracy } from "./chess/explain/gameSummary";
 
 import Board from "./components/Board";
-import "./app.css";
+import "./app.css"; 
 
 import moveSound from "./assets/sounds/move.mp3";
 import captureSound from "./assets/sounds/capture.mp3";
