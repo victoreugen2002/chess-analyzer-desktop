@@ -4,3 +4,4 @@ export { detectMoveToSafety } from "./moveToSafety";
 export { detectAttack } from "./attackDetector";
 export { detectBattery } from "./battery";
 export { detectHangingPiece } from "./hanging";
+export { detectPin } from "./pinDetector";

@@ -53,6 +53,23 @@ export function buildCoachMessage(signal) {
       return `This creates battery pressure on ${text}.`;
     }
 
+    case "pin": {
+      const target = signal.targets?.[0];
+      const name = getPieceName(target?.piece) || "piece";
+      return `This pins the ${name} on ${target.square} to the king.`;
+    }
+    case "ignoredAttack": {
+      const target = signal.targets?.[0];
+
+      const name =
+        signal.name ||
+        target?.name ||
+        getPieceName(signal.piece) ||
+        getPieceName(target?.piece) ||
+        "piece";
+
+      return `This ignores the attack on the ${name}.`;
+    }
     case "attack": {
       if (!signal.targets?.length) return "";
 

@@ -538,6 +538,7 @@ button {
 
 .move-list {
   margin-top: 16px;
+  min-height: 340px;
   max-height: 340px;
   overflow: auto;
   border-radius: 18px;
@@ -760,17 +761,16 @@ button {
 
 .panel--board .summary-wrapper {
   margin-top: 18px;
+
 }
 
 .summary-wrapper {
-  margin-top: 20px;
+  margin: 20px 0;
   padding-top: 16px;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  border-top: 1.5px solid rgba(0, 255, 150, 0.25);
 }
-
 .summary-grid {
   background: rgba(255,255,255,0.02);
-
   border-radius: 12px;
   width: 100%;
 }
@@ -1126,4 +1126,76 @@ button {
 .tabs button.is-active {
   background: rgba(34, 197, 94, 0.18);
   color: #fff;
+}
+
+/* BASE highlight */
+.signal-highlight {
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 215, 0, 0.9),
+    0 0 8px rgba(255, 215, 0, 0.5);
+}
+
+/* 🎯 LAST MOVE (informational) */
+/* .highlight-from {
+  background: rgba(255, 200, 0, 0.25);
+}
+
+.highlight-to {
+  background: rgba(0, 200, 255, 0.25);
+} */
+
+/* 🔴 THREAT (toate piesele atacate) */
+.signal-highlight--threat {
+  position: relative;
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 50, 50, 1),
+    0 0 14px rgba(255, 50, 50, 1);
+}
+
+.signal-highlight--threat::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 50, 50, 0.5);
+  pointer-events: none;
+}
+
+/* UI */
+.analyze-btn {
+  width: 100%;
+  margin-top: 12px;
+}
+/* layout */
+.main-grid--play,
+.main-grid--coach {
+  grid-template-columns: minmax(580px, auto) minmax(380px, 420px);
+  justify-content: center;
+}
+
+.panel-head--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+
+
+.panel-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.accuracy-bar {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.accuracy-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(0, 255, 150, 0.7);
 }

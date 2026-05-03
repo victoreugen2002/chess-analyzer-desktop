@@ -230,3 +230,34 @@ export function isSquareDefended(chess, square, defenderColor) {
 
   return false;
 }
+
+export function calculateAccuracy(moves = []) {
+  if (!moves.length) return 0;
+
+  const score = moves.reduce((acc, m) => {
+    if (m.label === "Good") return acc + 1;
+    if (m.label === "Inaccuracy") return acc + 0.7;
+    if (m.label === "Mistake") return acc + 0.4;
+    if (m.label === "Blunder") return acc + 0.1;
+    return acc;
+  }, 0);
+
+  return Math.round((score / moves.length) * 100);
+}
+
+export function estimatePlayerRating(analysis = [], result, side) {
+  if (!analysis.length) return 1200;
+
+  const base = side === "w" ? 1500 : 1500;
+
+  const penalties = analysis
+    .filter(m => m.side === side)
+    .reduce((acc, m) => {
+      if (m.label === "Blunder") return acc + 50;
+      if (m.label === "Mistake") return acc + 25;
+      if (m.label === "Inaccuracy") return acc + 10;
+      return acc;
+    }, 0);
+
+  return Math.max(800, base - penalties);
+}

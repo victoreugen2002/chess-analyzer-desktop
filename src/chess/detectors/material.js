@@ -6,6 +6,14 @@ export function detectMaterialGain(features) {
 
   const value = PIECE_VALUES[features.capturedPiece] || 0;
 
+  const isRecapture = features?.previousSan?.includes("x");
+  const materialChange = features?.materialChange ?? 0;
+
+  // ❌ NU e gain dacă e recapture sau schimb egal
+  if (isRecapture || Math.abs(materialChange) < 0.5) {
+    return null;
+  }
+
   return {
     type: "materialGain",
     targets: [
@@ -13,15 +21,11 @@ export function detectMaterialGain(features) {
         piece: features.capturedPiece,
         square: features.to,
         value,
-        isDefended: false, // capturată deja
+        isDefended: false,
       },
     ],
-    tags: {
-      recapture: features?.previousSan?.includes("x"),
-    },
   };
 }
-
 export function detectMaterialLoss(features) {
   const loss = features.materialChange;
   if (!Number.isFinite(loss) || loss >= 0) return null;

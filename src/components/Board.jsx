@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import woodBoard from "../assets/wood-board.png";
 import wp from "../assets/pieces/wp.png";
 import wn from "../assets/pieces/wn.png";
@@ -40,10 +40,11 @@ function ChessPiece({ piece, size }) {
   );
 }
 
-export default function Board({ fen, size, hoveredMove }) {
+export default function Board({ fen, size, hoveredMove, highlights = {}, onSquareClick, onMove }) {
   const rows = useMemo(() => fenToBoardRows(fen), [fen]);
   const cellSize = Math.floor(size / 8);
   const boardPixelSize = cellSize * 8;
+  const [dragFrom, setDragFrom] = useState(null);
 
   const firstMove = hoveredMove?.bestContinuation?.split(" ")[0];
   const playedMove = hoveredMove?.lan;
@@ -70,6 +71,8 @@ export default function Board({ fen, size, hoveredMove }) {
       y: (8 - rank) * cellSize + cellSize / 2,
     };
   }
+
+
 
   const arrowFrom = squareToCenter(highlightFrom);
   const arrowTo = squareToCenter(highlightTo);
@@ -102,17 +105,47 @@ export default function Board({ fen, size, hoveredMove }) {
               const file = FILES[colIndex];
               const rank = 8 - rowIndex;
               const square = file + rank;
-
+              const highlightType = highlights[square];
               return (
                 <div
                   key={`${rowIndex}-${colIndex}`}
+                  onClick={() => onSquareClick?.(square)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+
+                    const fromSquare = e.dataTransfer.getData("text/plain") || dragFrom;
+
+                    if (!fromSquare || fromSquare === square) {
+                      setDragFrom(null);
+                      return;
+                    }
+
+                    onMove?.(fromSquare, square);
+                    setDragFrom(null);
+                  }}
+                      
+  
                   className={`
                     board-cell
                     ${isLight ? "board-cell--light" : "board-cell--dark"}
                     ${square === highlightFrom ? "highlight-from" : ""}
                     ${square === highlightTo ? "highlight-to" : ""}
+                    ${highlightType ? `signal-highlight signal-highlight--${highlightType}` : ""}
                   `}
-                  style={{ width: cellSize, height: cellSize }}
+                    style={{
+                      width: cellSize,
+                      height: cellSize,
+                      backgroundColor:
+                        square === highlightFrom
+                          ? "rgba(255, 200, 0, 0.35)"
+                          : square === highlightTo
+                          ? "rgba(0, 200, 255, 0.35)"
+                          : undefined
+                    }}
                 >
                   {rowIndex === 7 && (
                     <span className={`coord coord--file ${isLight ? "coord--light" : "coord--dark"}`}>
@@ -126,7 +159,41 @@ export default function Board({ fen, size, hoveredMove }) {
                     </span>
                   )}
 
-                  <ChessPiece piece={piece} size={cellSize} />
+                  <div
+                    draggable={!!piece}
+                    onDragStart={(e) => {
+                      if (!piece) return;
+
+                      e.dataTransfer.setData("text/plain", square);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragFrom(square);
+
+                      const dragImg = document.createElement("img");
+                      dragImg.src = pieceImages[piece];
+                      dragImg.style.width = `${cellSize * 0.92}px`;
+                      dragImg.style.height = `${cellSize * 0.92}px`;
+                      dragImg.style.position = "absolute";
+                      dragImg.style.top = "-1000px";
+                      dragImg.style.pointerEvents = "none";
+                      dragImg.style.opacity = "1";
+
+                      document.body.appendChild(dragImg);
+
+                      e.dataTransfer.setDragImage(
+                        dragImg,
+                        (cellSize * 0.92) / 2,
+                        (cellSize * 0.92) / 2
+                      );
+
+                      requestAnimationFrame(() => {
+                        document.body.removeChild(dragImg);
+                      });
+                    }}
+                  >
+                  <div style={{ opacity: dragFrom === square ? 0 : 1 }}>
+                    <ChessPiece piece={piece} size={cellSize} />
+                  </div>
+                  </div>
                 </div>
               );
             })

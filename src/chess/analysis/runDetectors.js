@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-
+import { detectIgnoredAttack } from "../detectors/detectIgnoredAttack";
 import {
   detectMateThreat,
   detectBattery,
@@ -8,6 +8,7 @@ import {
   detectMaterialLoss,
   detectMaterialGain,
   detectMoveToSafety,
+  detectPin
 } from "../detectors";
 
 function normalize(d) {
@@ -50,6 +51,8 @@ function normalize(d) {
         severity: 2,
       };
 
+
+
     case "moveToSafety":
       return {
         type: "moveToSafety",
@@ -59,13 +62,20 @@ function normalize(d) {
       };
 
     case "hanging":
+      return {
+        type: "attack",
+        ...base,
+        priority: 1,
+        severity: 3,
+      };
+
     case "pressure":
     case "enemyPressure":
       return {
         type: "attack",
         ...base,
-        priority: 2,
-        severity: 3,
+        priority: 3,
+        severity: 2,
       };
 
     case "battery":
@@ -74,6 +84,20 @@ function normalize(d) {
           ...base,
           priority: 3,
           severity: 2,
+      };
+    case "pin":
+      return {
+        type: "pin",
+        ...base,
+        priority: 3,
+        severity: 2,
+      };
+    case "ignoredAttack":
+      return {
+        type: "ignoredAttack",
+        ...base,
+        priority: 2,
+        severity: 3,
       };
 
     case "attack":
@@ -128,6 +152,12 @@ export function runDetectors(features) {
       
     }),
 
+    detectPin({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
+
     detectBattery(features),
 
     detectMaterialGain(features),
@@ -140,6 +170,7 @@ export function runDetectors(features) {
     }),
 
     detectMaterialLoss(features),
+    detectIgnoredAttack(features),
     detectHangingPiece(features),
 
 

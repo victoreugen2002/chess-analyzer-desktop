@@ -1,18 +1,23 @@
 import { Chess } from "chess.js";
 
 export function getHeaders(chess) {
-  if (typeof chess.getHeaders === "function") return chess.getHeaders();
-  if (typeof chess.header === "function") return chess.header();
-  return {};
+  return typeof chess.header === "function" ? chess.header() : {};
 }
 
 export function loadPgnStrict(chess, pgn) {
-  const result = chess.loadPgn(pgn);
-  if (result === false) throw new Error("Invalid PGN");
+  try {
+    const ok = chess.loadPgn(pgn);
+    if (!ok) {
+      console.warn("PGN parse failed, but continuing");
+    }
+  } catch (e) {
+    console.warn("PGN parse error:", e);
+  }
 }
 
 export function buildMoveObjectsFromPgn(pgn) {
   const chess = new Chess();
+
   loadPgnStrict(chess, pgn);
 
   const verboseMoves = chess.history({ verbose: true });
@@ -40,7 +45,7 @@ export function buildMoveObjectsFromPgn(pgn) {
 
   return {
     headers,
-    result: headers.Result || "*",
+    result: headers?.Result || "*",
     moves,
     initialFen: new Chess().fen(),
   };

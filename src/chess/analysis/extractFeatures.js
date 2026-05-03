@@ -68,6 +68,9 @@ export function extractFeatures({ fenBefore, fenAfter, san, side }) {
     attackedEnemyPieces,
 
     ownHangingPieces,
+    ownHangingBefore,
+    ownHangingAfter,
+
     enemyHangingPieces,
 
     batteryAttacks,

@@ -25,18 +25,28 @@ export function detectMoveToSafety({ chessBefore, chessAfter, move } = {}) {
 
   const enemyColor = pieceBefore.color === "w" ? "b" : "w";
 
-  const wasAttacked = isSquareDefended(chessBefore, move.from, enemyColor);
-  const isNowSafe = !isSquareDefended(chessAfter, move.to, enemyColor);
+  const attackers = getAttackers(chessBefore, move.from, enemyColor);
+  const newAttackers = getAttackers(chessAfter, move.to, enemyColor);
+
+  const wasAttacked = attackers.length > 0;
+  const isNowSafe = newAttackers.length === 0;
 
   if (!wasAttacked || !isNowSafe) return null;
-
-  const attackers = getAttackers(chessBefore, move.from, enemyColor);
 
   const values = { p:1, n:3, b:3, r:5, q:9, k:100 };
 
   const bestAttacker = attackers.sort(
     (a, b) => values[a.type] - values[b.type]
   )[0];
+
+  console.log("moveToSafety debug", {
+    san: move?.san,
+    from: move?.from,
+    to: move?.to,
+    pieceBefore,
+    attackers,
+    newAttackers,
+  });
 
   return {
     type: "moveToSafety",

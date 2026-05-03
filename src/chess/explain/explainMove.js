@@ -1,3 +1,4 @@
+import { Chess } from "chess.js";
 import { moveToHuman } from "../utils";
 import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName } from "../core/pieces";
@@ -11,17 +12,37 @@ function getSecondarySignal(detections, primary) {
   );
 }
 
-function getHangingText(detections, label) {
-  const hanging = detections?.find(
+function getReasonText(detections, label, playedTo) {
+  if (label === "Good") return "";
+
+  const attack = detections?.find(
     (d) => d.type === "attack" && d.targets?.length && d.severity === 3
   );
 
-  if (!hanging || label === "Good") return "";
+  if (!attack) return "";
 
-  const target = hanging.targets[0];
+  const target = attack.targets[0];
   const name = getPieceName(target.piece) || "piece";
 
-  return ` However, the ${name} on ${target.square} is hanging.`;
+  if (target.square === playedTo) {
+    return ` because it leaves the ${name} hanging`;
+  }
+
+  if (!target.isDefended) {
+    return ` because the ${name} on ${target.square} can be captured`;
+  }
+
+  return ` because the ${name} on ${target.square} is under pressure`;
+}
+
+function buildLabelText(label, reasonText, bestText) {
+  const labelText =
+    label === "Blunder" ? "This is a blunder" :
+    label === "Mistake" ? "This is a mistake" :
+    label === "Inaccuracy" ? "This move is slightly imprecise" :
+    "This is a natural move";
+
+  return `${labelText}${reasonText ? `${reasonText}.` : "."}${bestText}`;
 }
 
 export function explainMove({
@@ -35,6 +56,36 @@ export function explainMove({
 }) {
   const opener = `${side === "w" ? "White" : "Black"} played ${san}.`;
 
+  let playedTo = null;
+
+  try {
+    const chess = new Chess(fenBefore);
+    const move = chess.move(san, { sloppy: true });
+    playedTo = move?.to || null;
+  } catch {
+    playedTo = null;
+  }
+
+  const cleanSignal = signal?.targets
+    ? {
+        ...signal,
+        targets: signal.targets.filter((t) => t.square !== playedTo),
+      }
+    : signal;
+
+  const cleanDetections = detections?.map((d) =>
+    d.targets
+      ? { ...d, targets: d.targets.filter((t) => t.square !== playedTo) }
+      : d
+  );
+
+  const usableSignal =
+    cleanSignal?.targets &&
+    cleanSignal.targets.length === 0 &&
+    ["attack", "battery", "pin", "ignoredAttack"].includes(cleanSignal.type)
+      ? null
+      : cleanSignal;
+
   const bestHuman =
     bestMove && bestMove !== "—" ? moveToHuman(bestMove, fenBefore) : "";
 
@@ -43,35 +94,30 @@ export function explainMove({
       ? ` A better move was ${bestHuman}.`
       : "";
 
-  const hangingText = getHangingText(detections, label);
+  const reasonText = getReasonText(detections, label, playedTo);
 
-  if (signal) {
-    const msg = buildCoachMessage(signal);
-    const secondary = getSecondarySignal(detections, signal);
+  if (usableSignal) {
+    const msg = buildCoachMessage(usableSignal);
+    const secondary = getSecondarySignal(cleanDetections, usableSignal);
 
-    if (msg && signal.type === "moveToSafety" && secondary) {
+    if (msg && usableSignal.type === "moveToSafety" && secondary) {
       const target = secondary.targets[0];
       const name = getPieceName(target.piece) || "piece";
 
-      return `${opener} ${msg} It also attacks the ${name} on ${target.square}.${hangingText}${bestText}`.trim();
+      return `${opener} ${msg} It also attacks the ${name} on ${target.square}.${bestText}`.trim();
     }
 
     if (msg) {
-      return `${opener} ${msg}${hangingText}${bestText}`.trim();
+      return `${opener} ${msg}${bestText}`.trim();
     }
   }
 
-  if (label === "Blunder") {
-    return `${opener} This is a blunder.${hangingText}${bestText}`;
-  }
+  console.log("EXPLAIN", san, {
+    label,
+    signal,
+    usableSignal,
+    detections,
+  });
 
-  if (label === "Mistake") {
-    return `${opener} This is a mistake.${hangingText}${bestText}`;
-  }
-
-  if (label === "Good") {
-    return `${opener} This is a natural move.`;
-  }
-
-  return `${opener} This move is slightly imprecise.${hangingText}${bestText}`;
+  return `${opener} ${buildLabelText(label, reasonText, bestText)}`;
 }

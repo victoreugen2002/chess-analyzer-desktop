@@ -36,10 +36,12 @@ export function detectAttack({ chessAfter, move, san, moveIndex } = {}) {
     }
   }
 
-  if (!targets.length) return null;
+  const filteredTargets = targets.filter((target) => target.square !== move.to);
+
+  if (!filteredTargets.length) return null;
 
   return {
     type: "attack",
-    targets,
+    targets: filteredTargets,
   };
 }

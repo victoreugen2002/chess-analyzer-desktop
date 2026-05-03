@@ -68,7 +68,7 @@ export function getHangingPieces(fenAfter, side) {
       const isHanging =
         attackers.length > 0 &&
         defenders.length === 0 &&
-        piece.value >= 3;
+        piece.value >= 1;
 
       const isUnderPressure =
         attackers.length > defenders.length &&
