@@ -1,9 +1,10 @@
 export function getLabelFromEval(loss) {
   if (!Number.isFinite(loss)) return "Good";
 
-  if (loss >= 500) return "Blunder";
-  if (loss >= 250) return "Mistake";
-  if (loss >= 100) return "Inaccuracy";
+  if (loss >= 300) return "Blunder";  
+  if (loss >= 150) return "Mistake";
+  if (loss >= 60) return "Inaccuracy";
+
 
   return "Good";
 }

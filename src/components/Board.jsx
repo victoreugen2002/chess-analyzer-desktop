@@ -40,7 +40,7 @@ function ChessPiece({ piece, size }) {
   );
 }
 
-export default function Board({ fen, size, hoveredMove, highlights = {}, onSquareClick, onMove }) {
+export default function Board({ fen, size, hoveredMove, highlights = {}, arrowFrom, arrowTo, onSquareClick, onMove }) {
   const rows = useMemo(() => fenToBoardRows(fen), [fen]);
   const cellSize = Math.floor(size / 8);
   const boardPixelSize = cellSize * 8;
@@ -72,10 +72,9 @@ export default function Board({ fen, size, hoveredMove, highlights = {}, onSquar
     };
   }
 
+  const computedArrowFrom = arrowFrom || squareToCenter(highlightFrom);
+  const computedArrowTo = arrowTo || squareToCenter(highlightTo);
 
-
-  const arrowFrom = squareToCenter(highlightFrom);
-  const arrowTo = squareToCenter(highlightTo);
 
   return (
     <div className="board-shell">
@@ -200,7 +199,7 @@ export default function Board({ fen, size, hoveredMove, highlights = {}, onSquar
           )}
         </div>
 
-        {arrowFrom && arrowTo && (
+        {computedArrowFrom && computedArrowTo && (
           <svg
             className="board-arrow-layer"
             width={boardPixelSize}
@@ -221,10 +220,10 @@ export default function Board({ fen, size, hoveredMove, highlights = {}, onSquar
             </defs>
 
             <line
-              x1={arrowFrom.x}
-              y1={arrowFrom.y}
-              x2={arrowTo.x}
-              y2={arrowTo.y}
+              x1={computedArrowFrom.x}
+              y1={computedArrowFrom.y}
+              x2={computedArrowTo.x}
+              y2={computedArrowTo.y}
               markerEnd="url(#arrowhead)"
             />
           </svg>

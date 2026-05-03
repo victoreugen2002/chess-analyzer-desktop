@@ -5,36 +5,42 @@ export function detectIgnoredAttack(features) {
   const from = features?.from;
   const to = features?.to;
 
+  const targets = [];
+
   for (const pieceBefore of before) {
+    if (pieceBefore.type === "p") continue;
+
     const sameAfter = after.find((p) => p.square === pieceBefore.square);
-
     if (!sameAfter) continue;
-
-    const wasUnderAttack =
-      pieceBefore.isHanging || pieceBefore.isUnderPressure;
-
-    const stillUnderAttack =
-      sameAfter.isHanging || sameAfter.isUnderPressure;
 
     const notMoved =
       pieceBefore.square !== from && pieceBefore.square !== to;
 
-    if (wasUnderAttack && stillUnderAttack && notMoved) {
-    return {
-        type: "ignoredAttack",
+    if (!notMoved) continue;
+
+    const isPawn = pieceBefore.type === "p";
+
+    const wasReallyThreatened = isPawn
+      ? pieceBefore.isHanging
+      : pieceBefore.isHanging || pieceBefore.isUnderPressure;
+
+    const stillReallyThreatened = isPawn
+      ? sameAfter.isHanging
+      : sameAfter.isHanging || sameAfter.isUnderPressure;
+
+    if (wasReallyThreatened && stillReallyThreatened) {
+      targets.push({
         piece: pieceBefore.type,
         name: pieceBefore.name,
         square: pieceBefore.square,
-        targets: [
-        {
-            piece: pieceBefore.type,
-            name: pieceBefore.name,
-            square: pieceBefore.square,
-        },
-        ],
-    };
+      });
     }
   }
 
-  return null;
+  if (!targets.length) return null;
+
+  return {
+    type: "ignoredAttack",
+    targets,
+  };
 }

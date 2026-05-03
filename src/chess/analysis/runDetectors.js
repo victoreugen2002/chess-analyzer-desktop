@@ -8,7 +8,8 @@ import {
   detectMaterialLoss,
   detectMaterialGain,
   detectMoveToSafety,
-  detectPin
+  detectPin,
+  detectBasicMove,
 } from "../detectors";
 
 function normalize(d) {
@@ -63,7 +64,7 @@ function normalize(d) {
 
     case "hanging":
       return {
-        type: "attack",
+        type: "hanging",
         ...base,
         priority: 1,
         severity: 3,
@@ -72,7 +73,7 @@ function normalize(d) {
     case "pressure":
     case "enemyPressure":
       return {
-        type: "attack",
+        type: d.type,
         ...base,
         priority: 3,
         severity: 2,
@@ -96,7 +97,7 @@ function normalize(d) {
       return {
         type: "ignoredAttack",
         ...base,
-        priority: 2,
+        priority: 6,
         severity: 3,
       };
 
@@ -105,6 +106,24 @@ function normalize(d) {
         type: "attack",
         ...base,
         priority: 3,
+        severity: 2,
+      };
+
+    case "check":
+    case "castle":
+      return {
+        type: d.type,
+        ...base,
+        priority: 1,
+        severity: 2,
+      };
+
+    case "capture":
+    case "recapture":
+      return {
+        type: d.type,
+        ...base,
+        priority: 2,
         severity: 2,
       };
 
@@ -144,6 +163,13 @@ export function runDetectors(features) {
 
   const raw = [
     detectMateThreat(features),
+
+    detectBasicMove({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+      previousSan: features.previousSan,
+    }),
 
     detectMoveToSafety({
       chessBefore,

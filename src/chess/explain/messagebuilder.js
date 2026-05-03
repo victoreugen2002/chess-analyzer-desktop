@@ -13,7 +13,27 @@ export function buildCoachMessage(signal) {
       return signal.tags?.opponent
         ? "This allows a checkmate in one."
         : "This creates a checkmate threat.";
+      case "check":
+        return "This gives check to the king.";
 
+      case "castle":
+        return "This castles the king to safety.";
+
+      case "recapture": {
+        const target = signal.targets?.[0];
+        if (!target) return "This recaptures.";
+
+        const name = getPieceName(target.piece) || "piece";
+        return `This recaptures the ${name}${target.square ? ` on ${target.square}` : ""}.`;
+      }
+
+      case "capture": {
+        const target = signal.targets?.[0];
+        if (!target) return "This captures a piece.";
+
+        const name = getPieceName(target.piece) || "piece";
+        return `This captures the ${name}${target.square ? ` on ${target.square}` : ""}.`;
+      }
     case "materialGain": {
       const target = signal.targets?.[0];
       const name = getPieceName(target?.piece || signal.piece) || "piece";
@@ -29,6 +49,27 @@ export function buildCoachMessage(signal) {
       const target = signal.targets?.[0];
       const name = getPieceName(target?.piece || signal.piece) || "piece";
       return `This loses a ${name}.`;
+    }
+
+    case "hanging": {
+      const target = signal.targets?.[0];
+      if (!target) return "";
+
+      const name = getPieceName(target.piece) || "piece";
+      return `This leaves the ${name} on ${target.square} undefended.`;
+    }
+
+    case "enemyPressure": {
+      const target = signal.targets?.[0];
+      if (!target) return "";
+
+      const name = getPieceName(target.piece) || "piece";
+
+      if (!target.isDefended) {
+        return `This leaves the ${name} on ${target.square} undefended.`;
+      }
+
+      return `This leaves the ${name} on ${target.square} under pressure.`;
     }
 
     case "moveToSafety": {
@@ -59,16 +100,13 @@ export function buildCoachMessage(signal) {
       return `This pins the ${name} on ${target.square} to the king.`;
     }
     case "ignoredAttack": {
-      const target = signal.targets?.[0];
+      if (!signal.targets?.length) return "";
 
-      const name =
-        signal.name ||
-        target?.name ||
-        getPieceName(signal.piece) ||
-        getPieceName(target?.piece) ||
-        "piece";
+      const text = signal.targets
+        .map(formatTarget)
+        .join(" and ");
 
-      return `This ignores the attack on the ${name}.`;
+      return `This ignores the attack on ${text}.`;
     }
     case "attack": {
       if (!signal.targets?.length) return "";

@@ -2,7 +2,10 @@
 const { Chess } = require("chess.js");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
-const stockfish = require("./stockfish");
+const { createStockfishEngine } = require("./stockfish");
+
+const stockfishPlayer = createStockfishEngine();
+const stockfishAnalysis = createStockfishEngine();
 app.setAppUserModelId("ChessAnalyzerDesktop");
 
 const isDev = !app.isPackaged;
@@ -63,7 +66,8 @@ function normalizeEngineScore(score, fen) {
 
 app.whenReady().then(async () => {
   try {
-    await stockfish.start();
+    await stockfishPlayer.start();
+    await stockfishAnalysis.start();
   } catch (error) {
     console.error("Failed to start Stockfish:", error);
   }
@@ -76,7 +80,15 @@ app.whenReady().then(async () => {
 });
 
 ipcMain.handle("engine:analyze-fen", async (_event, { fen, depth = 15 }) => {
-  const result = await stockfish.analyzeFen(fen, depth);
+  const result = await stockfishAnalysis.analyzeFen(fen, depth);
+
+  return {
+    ...result,
+    normalizedScore: normalizeEngineScore(result.score, fen),
+  };
+});
+ipcMain.handle("engine:get-best-move", async (_event, { fen, elo = 1200, depth = 10 }) => {
+  const result = await stockfishPlayer.getBestMove(fen, elo, depth);
 
   return {
     ...result,
@@ -88,8 +100,8 @@ ipcMain.handle("engine:analyze-game", async (_event, { positions, depth = 15 }) 
   const results = [];
 
   for (const position of positions) {
-    const before = await stockfish.analyzeFen(position.fenBefore, depth);
-    const played = await stockfish.analyzeFen(position.fenAfter, depth);
+    const before = await stockfishAnalysis.analyzeFen(position.fenBefore, depth);
+    const played = await stockfishAnalysis.analyzeFen(position.fenAfter, depth);
 
     let bestMoveEval = normalizeEngineScore(before.score, position.fenBefore);
     let bestMoveFen = null;
@@ -111,7 +123,7 @@ ipcMain.handle("engine:analyze-game", async (_event, { positions, depth = 15 }) 
 
         if (applied) {
           bestMoveFen = bestChess.fen();
-          const bestAfter = await stockfish.analyzeFen(bestMoveFen, depth);
+          const bestAfter = await stockfishAnalysis.analyzeFen(bestMoveFen, depth);
           bestMoveEval = normalizeEngineScore(bestAfter.score, bestMoveFen);
         }
       } catch (error) {
@@ -149,10 +161,14 @@ ipcMain.handle("engine:analyze-game", async (_event, { positions, depth = 15 }) 
 
   return results;
 });
+
 app.on("window-all-closed", async () => {
   try {
-    if (typeof stockfish.quit === "function") {
-      await stockfish.quit();
+    if (typeof stockfishPlayer.quit === "function") {
+      await stockfishPlayer.quit();
+    }
+    if (typeof stockfishAnalysis.quit === "function") {
+      await stockfishAnalysis.quit();
     }
   } catch {}
 

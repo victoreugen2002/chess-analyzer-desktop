@@ -20,6 +20,7 @@ export function detectAttack({ chessAfter, move, san, moveIndex } = {}) {
     const target = chessAfter.get(square);
     if (!target || target.color !== enemyColor) continue;
 
+    if (target.type === "k") continue;
     const targetValue = PIECE_VALUES[target.type] || 0;
     const isDefended = isSquareDefended(chessAfter, square, enemyColor);
 

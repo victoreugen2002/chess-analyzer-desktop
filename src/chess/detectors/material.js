@@ -6,7 +6,9 @@ export function detectMaterialGain(features) {
 
   const value = PIECE_VALUES[features.capturedPiece] || 0;
 
-  const isRecapture = features?.previousSan?.includes("x");
+  const isRecapture =
+    features?.previousSan?.includes("x") &&
+    features?.previousSan?.slice(-2) === features?.to;
   const materialChange = features?.materialChange ?? 0;
 
   // ❌ NU e gain dacă e recapture sau schimb egal

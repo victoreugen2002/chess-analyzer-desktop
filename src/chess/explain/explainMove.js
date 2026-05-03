@@ -25,7 +25,11 @@ function getReasonText(detections, label, playedTo) {
   const name = getPieceName(target.piece) || "piece";
 
   if (target.square === playedTo) {
-    return ` because it leaves the ${name} hanging`;
+    if (!target.isDefended && target.value >= 3) {
+      return ` because the ${name} on ${target.square} is hanging`;
+    }
+
+    return "";
   }
 
   if (!target.isDefended) {
@@ -36,6 +40,10 @@ function getReasonText(detections, label, playedTo) {
 }
 
 function buildLabelText(label, reasonText, bestText) {
+  if (label === "Inaccuracy" && !reasonText) {
+    return `This move is slightly imprecise — it doesn’t improve your position.${bestText}`;
+  }
+
   const labelText =
     label === "Blunder" ? "This is a blunder" :
     label === "Mistake" ? "This is a mistake" :
@@ -66,15 +74,19 @@ export function explainMove({
     playedTo = null;
   }
 
-  const cleanSignal = signal?.targets
-    ? {
-        ...signal,
-        targets: signal.targets.filter((t) => t.square !== playedTo),
-      }
-    : signal;
+  const shouldFilterPlayedTo = (d) =>
+    !["capture", "recapture"].includes(d?.type);
+
+  const cleanSignal =
+    signal?.targets && shouldFilterPlayedTo(signal)
+      ? {
+          ...signal,
+          targets: signal.targets.filter((t) => t.square !== playedTo),
+        }
+      : signal;
 
   const cleanDetections = detections?.map((d) =>
-    d.targets
+    d.targets && shouldFilterPlayedTo(d)
       ? { ...d, targets: d.targets.filter((t) => t.square !== playedTo) }
       : d
   );
@@ -94,21 +106,38 @@ export function explainMove({
       ? ` A better move was ${bestHuman}.`
       : "";
 
-  const reasonText = getReasonText(detections, label, playedTo);
+  const reasonText = getReasonText(cleanDetections, label, playedTo);
 
   if (usableSignal) {
     const msg = buildCoachMessage(usableSignal);
     const secondary = getSecondarySignal(cleanDetections, usableSignal);
 
-    if (msg && usableSignal.type === "moveToSafety" && secondary) {
-      const target = secondary.targets[0];
+    if (
+      msg &&
+      ["moveToSafety", "capture", "recapture"].includes(usableSignal.type) &&
+      secondary
+    ) {
+      const target = secondary.targets?.[0];
+      if (!target) return `${opener} ${msg}${bestText}`.trim();
+
       const name = getPieceName(target.piece) || "piece";
 
       return `${opener} ${msg} It also attacks the ${name} on ${target.square}.${bestText}`.trim();
     }
 
     if (msg) {
-      return `${opener} ${msg}${bestText}`.trim();
+      if (label === "Good") {
+        return `${opener} ${msg}${bestText}`.trim();
+      }
+
+      const cleanMsg = msg.replace(/\.$/, "");
+
+      const labelText =
+        label === "Blunder" ? "This is a blunder." :
+        label === "Mistake" ? "This is a mistake." :
+        "This move is slightly imprecise.";
+
+      return `${opener} ${cleanMsg}. ${labelText}${bestText}`.trim();
     }
   }
 

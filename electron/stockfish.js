@@ -129,6 +129,39 @@ class StockfishEngine {
     });
   }
 
+  async getBestMove(fen, elo = 1200, depth = 10) {
+    await this.start();
+
+    return new Promise((resolve) => {
+      this.currentResolve = resolve;
+
+      this.lastScore = null;
+      this.lastPv = "";
+      this.bestMove = null;
+
+      const safeElo = Math.max(800, Math.min(elo, 2800));
+
+      console.log("GET BEST MOVE:", { fen, elo: safeElo, depth });
+
+      this.engine.stdin.write("ucinewgame\n");
+      this.engine.stdin.write("setoption name UCI_LimitStrength value true\n");
+      this.engine.stdin.write(`setoption name UCI_Elo value ${safeElo}\n`);
+      this.engine.stdin.write("setoption name MultiPV value 1\n");
+      this.engine.stdin.write(`position fen ${fen}\n`);
+      this.engine.stdin.write(`go depth ${depth}\n`);
+    });
+  }
+
+  // async getHumanLikeMove(fen, elo = 1900, depth = 11) {
+  //   await this.start();
+
+  //   // temporar: folosește best move normal
+  //   // apoi îl facem MultiPV corect
+  //   const result = await this.getBestMove(fen, elo, depth);
+
+  //   return result;
+  // }
+
   async quit() {
     if (!this.engine) return;
 
@@ -141,4 +174,8 @@ class StockfishEngine {
   }
 }
 
-module.exports = new StockfishEngine();
+module.exports = {
+  StockfishEngine,
+  createStockfishEngine: () => new StockfishEngine(),
+};
+

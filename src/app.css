@@ -1199,3 +1199,7 @@ button {
   border-radius: inherit;
   background: rgba(0, 255, 150, 0.7);
 }
+
+.coach-continue-btn {
+  margin-top: 16px;
+}

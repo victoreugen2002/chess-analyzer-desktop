@@ -13,7 +13,7 @@ function sameBatteryPattern(a, b) {
   );
 }
 
-export function extractFeatures({ fenBefore, fenAfter, san, side }) {
+export function extractFeatures({ fenBefore, fenAfter, san, side, previousSan}) {
   const enemySide = side === "w" ? "b" : "w";
 
   let from = null;
@@ -72,6 +72,10 @@ export function extractFeatures({ fenBefore, fenAfter, san, side }) {
     ownHangingAfter,
 
     enemyHangingPieces,
+
+    previousSan,
+    enemyHangingBefore,
+    enemyHangingAfter,
 
     batteryAttacks,
   };

@@ -26,12 +26,14 @@ import { START_PGN } from "./chess/pgn/samplePgn";
 export default function App() {
   const [mode, setMode] = useState("play");
   const [fullAnalysisVisible, setFullAnalysisVisible] = useState(false);
-  const [coachEnabled, setCoachEnabled] = useState(false);
+  const [coachEnabled, setCoachEnabled] = useState(true);
+  const [isEngineThinking, setIsEngineThinking] = useState(false);
   const [showPlayAnalysis, setShowPlayAnalysis] = useState(false);
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
   const sounds = useMemo(() => createMoveAudio(moveSound, captureSound), []);
   const { previewFen, resetPreview, playLinePreview } = useLinePreview(sounds);
   const moveListRef = useRef(null);
+  const [waitingForCoachConfirm, setWaitingForCoachConfirm] = useState(false);
   const [chess] = useState(() => new Chess());
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [rightTab, setRightTab] = useState("moves");
@@ -55,8 +57,32 @@ export default function App() {
   const whiteAccuracy = calculateAccuracy(whiteMoves);
   const blackAccuracy = calculateAccuracy(blackMoves);
   const [isHoveringBestMove, setIsHoveringBestMove] = useState(false);
+  const [liveCoachAnalysis, setLiveCoachAnalysis] = useState(null);
   const whitePlayedBetter = whiteAccuracy > blackAccuracy;
   const blackPlayedBetter = blackAccuracy > whiteAccuracy;
+
+  function squareToXY(square, cellSize) {
+    const file = square.charCodeAt(0) - 97; // a=0
+    const rank = 8 - parseInt(square[1], 10); // 8->0
+    return {
+      x: file * cellSize + cellSize / 2,
+      y: rank * cellSize + cellSize / 2,
+    };
+  }
+
+  const bestMove = liveCoachAnalysis?.bestMove;
+
+  const bestMoveArrow =
+    coachEnabled &&
+    coachMessage &&
+    bestMove &&
+    bestMove !== liveCoachAnalysis?.lan
+      ? {
+          from: squareToXY(bestMove.slice(0, 2), boardSize / 8),
+          to: squareToXY(bestMove.slice(2, 4), boardSize / 8),
+        }
+      : null;
+
   const summaryText = useMemo(() => {
     return generateGameSummary(analysis, gameData.result);
   }, [analysis]);
@@ -90,9 +116,18 @@ export default function App() {
 
     setMode(modeType);
     setStarted(true);
+
+    setCoachMessage(null);
+    setLiveCoachAnalysis(null);
+    setWaitingForCoachConfirm(false);
+
+    setFullAnalysisVisible(false);
+    setHoveredMove(null);
+    setIsHoveringBestMove(false);
   }
 
   function handleSquareClick(square) {
+    if (isEngineThinking) return;
     const piece = chess.get(square);
 
     if (!selectedSquare && !piece) return;
@@ -146,15 +181,68 @@ export default function App() {
     }
   }
 
-  function handleMove(from, to) {
+  function buildMove(from, to, promotion) {
+    const move = { from, to };
+
+    if (promotion) {
+      move.promotion = promotion;
+    }
+
+    return move;
+  }
+
+  async function makeEngineMove() {
+    if (mode !== "coach" || chess.isGameOver()) return;
+
+    setIsEngineThinking(true);
+
+    try {
+      await new Promise((r) => setTimeout(r, 400));
+
+      const result = await window.engineApi.getBestMove(chess.fen(), 2200, 11);
+
+      if (result?.bestMove) {
+        const engineMove = chess.move(
+          buildMove(
+            result.bestMove.slice(0, 2),
+            result.bestMove.slice(2, 4),
+            result.bestMove[4]
+          )
+        );
+
+        if (engineMove) {
+          sounds.playFromSan(engineMove.san);
+          setLastMoveSquares({ from: engineMove.from, to: engineMove.to });
+
+          setLiveCoachAnalysis(null);
+
+          const enginePgn = chess.pgn();
+          const engineBuilt = buildMoveObjectsFromPgn(enginePgn);
+
+          setPgn(enginePgn);
+          setGameData(engineBuilt);
+          setSelectedPly(chess.history().length);
+        }
+      }
+    } catch (error) {
+      console.error("Engine move failed:", error);
+    } finally {
+      setIsEngineThinking(false);
+    }
+  }
+
+
+
+  async function handleMove(from, to) {
+    if (mode === "coach" && chess.turn() !== "w") return;
+    if (isEngineThinking) return;
+
+    const previousFen = chess.fen();
+
     let move = null;
 
     try {
-      move = chess.move({
-        from,
-        to,
-        promotion: "q",
-      });
+      move = chess.move(buildMove(from, to));
     } catch {
       move = null;
     }
@@ -163,23 +251,83 @@ export default function App() {
 
     setSelectedSquare(null);
     sounds.playFromSan(move.san);
-
-    setLastMoveSquares({
-      from: move.from,
-      to: move.to,
-    });
+    setLastMoveSquares({ from: move.from, to: move.to });
 
     const newPgn = chess.pgn();
     const built = buildMoveObjectsFromPgn(newPgn);
+    const history = chess.history({ verbose: true });
 
     setPgn(newPgn);
     setGameData(built);
-    setSelectedPly(chess.history().length);
+    setSelectedPly(history.length);
     setFullAnalysisVisible(false);
 
-    if (coachEnabled) {
-      setShowPlayAnalysis(true);
-      runAnalysis(built);
+    if (coachEnabled && mode === "coach") {
+      try {
+        const before = await window.engineApi.analyzeFen(previousFen, 10);
+        const after = await window.engineApi.analyzeFen(chess.fen(), 10);
+
+        const loss =
+          before.normalizedScore === null || after.normalizedScore === null
+            ? 0
+            : before.normalizedScore - after.normalizedScore;
+
+        const lastMoveAnalysis = analyzeMove({
+          ply: history.length,
+          fenBefore: previousFen,
+          fenAfter: chess.fen(),
+          san: move.san,
+          side: move.color,
+          bestMove: before.bestMove,
+          bestEval: before.normalizedScore,
+          playedEval: after.normalizedScore,
+          loss,
+          moves: history,
+          moveIndex: history.length - 1,
+          playedLine: move.lan,
+          lan: move.lan,
+        });
+
+        setLiveCoachAnalysis(lastMoveAnalysis);
+
+        setAnalysis((prev) => {
+          const withoutCurrentMove = prev.filter(
+            (item) => item.ply !== lastMoveAnalysis.ply
+          );
+
+          return [...withoutCurrentMove, lastMoveAnalysis];
+        });
+
+        const shouldShowCoachMessage = ["Inaccuracy", "Mistake", "Blunder"].includes(
+          lastMoveAnalysis?.label
+        );
+
+        if (shouldShowCoachMessage) {
+          setWaitingForCoachConfirm(true);
+        } else {
+          setWaitingForCoachConfirm(false);
+        }
+
+        setCoachMessage(
+          shouldShowCoachMessage ? lastMoveAnalysis.explanation : null
+        );
+
+        console.log("COACH MESSAGE SET TO:", lastMoveAnalysis.explanation);
+
+        setShowPlayAnalysis(true);
+        if (shouldShowCoachMessage) {
+          return;
+        }
+        
+      } catch (error) {
+        console.error("Live coach analysis failed:", error);
+        setCoachMessage(null);
+      }
+    }
+
+    if (mode === "coach" && !chess.isGameOver()) {
+      setWaitingForCoachConfirm(false);
+      await makeEngineMove();
     }
   }
 
@@ -261,7 +409,12 @@ export default function App() {
   }, [analysis]);
 
   const currentMove = gameData.moves[selectedPly - 1] || null;
-  const currentAnalysis = currentMove ? analysisMap.get(currentMove.ply) : null;
+  const currentAnalysis =
+  liveCoachAnalysis && mode === "coach"
+    ? liveCoachAnalysis
+    : currentMove
+      ? analysisMap.get(currentMove.ply)
+      : null;
   const hasAlternativeBestMove =
     currentAnalysis?.bestMove &&
     currentAnalysis?.lan &&
@@ -327,7 +480,7 @@ export default function App() {
           lastResult &&
           ["Blunder", "Mistake", "Inaccuracy"].includes(lastResult.label)
         ) {
-          setCoachMessage(lastResult);
+          setCoachMessage(lastResult.explanation);
         } else {
           setCoachMessage(null);
         }
@@ -359,10 +512,25 @@ export default function App() {
     if (primary?.type === "materialGain") {
       if (from) highlights[from] = "source";
       if (to) highlights[to] = "gain";
-    } else if (["attack", "battery", "pin", "ignoredAttack", "enemyPressure"].includes(primary?.type)) {
+    } else if (["attack", "battery", "pin", "ignoredAttack", "enemyPressure", "capture", "recapture"].includes(primary?.type)) {
     primary.targets?.forEach((t) => {
-      highlights[t.square] = "threat";
+      if (t.square !== to) {
+        highlights[t.square] = "threat";
+      }
     });
+
+    detections
+      .filter(
+        (d) =>
+          d !== primary &&
+          ["attack", "battery", "pin"].includes(d.type) &&
+          d.targets?.some(t => !t.isDefended || (t.value || 0) >= 3)
+      )
+      .forEach((d) => {
+        d.targets?.forEach((t) => {
+          highlights[t.square] = "threat";
+        });
+      });
 
     } else if (primary?.type === "moveToSafety") {
       if (from) highlights[from] = "source";
@@ -519,9 +687,11 @@ export default function App() {
                   fullAnalysisVisible
                 )
                   ? currentAnalysis
-                  : coachMessage
+                  : liveCoachAnalysis
               }
               highlights={boardHighlights}
+              arrowFrom={bestMoveArrow?.from}
+              arrowTo={bestMoveArrow?.to}
               onSquareClick={handleSquareClick}
               onMove={handleMove}
             />
@@ -592,7 +762,7 @@ export default function App() {
               <>
               <div className="panel-head">
                 <div className="panel-actions">
-                  {(mode === "play" || mode === "engine") && (
+                  {mode !== "review" && (
                     <button
                       onClick={() => {
                         setCoachEnabled((v) => {
@@ -600,11 +770,9 @@ export default function App() {
 
                           if (!next) {
                             setCoachMessage(null);
-                          } else {
-                            if (gameData.moves.length > 0) {
-                              setShowPlayAnalysis(true);
-                              runAnalysis();
-                            }
+                          } else if (gameData.moves.length > 0) {
+                            setShowPlayAnalysis(true);
+                            runAnalysis();
                           }
 
                           return next;
@@ -616,6 +784,7 @@ export default function App() {
                     </button>
                   )}
                 </div>
+
                 <div className="panel-head--row">
                   <h2 className="panel-title">Move Review</h2>
                   <div className="waiting-pill">
@@ -624,15 +793,13 @@ export default function App() {
                 </div>
 
                 <div className="panel-actions">
-                  {(mode === "play" || mode === "coach") && (
-                    <button
-                      onClick={() => startNewGame(mode)}
-                      className="btn btn--ghost"
-                    >
+                  {mode !== "review" && (
+                    <button onClick={() => startNewGame(mode)} className="btn btn--ghost">
                       New Game
                     </button>
                   )}
-                  {(mode === "play" || mode === "coach") && (
+
+                  {mode !== "review" && (
                     <button
                       onClick={() => {
                         setFullAnalysisVisible(true);
@@ -647,7 +814,6 @@ export default function App() {
                     </button>
                   )}
                 </div>
-
               </div>
 
               <MoveList
@@ -673,8 +839,19 @@ export default function App() {
               )}
               {coachEnabled && coachMessage && !fullAnalysisVisible && mode !== "review" && (
                 <div className="coach-box">
-                  {coachMessage.explanation}
+                  {coachMessage}
                 </div>
+              )}
+              {waitingForCoachConfirm && (
+                <button
+                  className="btn btn--success coach-continue-btn"
+                  onClick={() => {
+                    setWaitingForCoachConfirm(false);
+                    makeEngineMove();
+                  }}
+                >
+                  Continue
+                </button>
               )}
               </>
               

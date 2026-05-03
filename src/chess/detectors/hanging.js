@@ -1,30 +1,46 @@
 export function detectHangingPiece(features) {
-  const ownTarget = features?.ownHangingPieces?.[0];
-  const enemyTarget = features?.enemyHangingPieces?.[0];
+  const ownTargets = features?.ownHangingPieces || [];
+  const enemyTargets = features?.enemyHangingPieces || [];
 
-  if (ownTarget?.isHanging) {
+  const pickHighestValue = (items) =>
+    [...items].sort((a, b) => (b.value || 0) - (a.value || 0))[0];
+
+  const ownHanging = ownTargets.filter((p) => p.isHanging);
+  const enemyHanging = enemyTargets.filter((p) => p.isHanging);
+
+  if (ownHanging.length) {
+    const target = pickHighestValue(ownHanging);
+
     return {
       type: "hanging",
-      piece: ownTarget.type,
-      square: ownTarget.square,
+      piece: target.type,
+      square: target.square,
       targets: [
         {
-          piece: ownTarget.type,
-          square: ownTarget.square,
+          piece: target.type,
+          name: target.name,
+          square: target.square,
+          value: target.value,
+          isDefended: target.isDefended,
         },
       ],
     };
   }
 
-  if (enemyTarget) {
+  if (enemyHanging.length) {
+    const target = pickHighestValue(enemyHanging);
+
     return {
       type: "enemyPressure",
-      piece: enemyTarget.type,
-      square: enemyTarget.square,
+      piece: target.type,
+      square: target.square,
       targets: [
         {
-          piece: enemyTarget.type,
-          square: enemyTarget.square,
+          piece: target.type,
+          name: target.name,
+          square: target.square,
+          value: target.value,
+          isDefended: target.isDefended,
         },
       ],
     };
