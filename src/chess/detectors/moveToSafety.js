@@ -39,12 +39,6 @@ export function detectMoveToSafety({ chessBefore, chessAfter, move } = {}) {
     (a, b) => values[a.type] - values[b.type]
   )[0];
 
-  const attackerValue = values[bestAttacker?.type] || 0;
-
-  if (attackerValue <= 1) return null;
-
-
-
   return {
     type: "moveToSafety",
     tags: {

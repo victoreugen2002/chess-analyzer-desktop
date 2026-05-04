@@ -43,6 +43,10 @@ export function extractFeatures({ fenBefore, fenAfter, san, side, previousSan}) 
       !ownHangingBefore.some((before) => before.square === after.square)
   );
 
+  const movedPieceHanging = ownHangingAfter.find(
+    (piece) => piece.square === to
+  );
+
   const enemyHangingPieces = enemyHangingAfter.filter(
     (after) =>
       !enemyHangingBefore.some((before) => before.square === after.square)
@@ -71,6 +75,7 @@ export function extractFeatures({ fenBefore, fenAfter, san, side, previousSan}) 
     ownHangingBefore,
     ownHangingAfter,
 
+    movedPieceHanging,
     enemyHangingPieces,
 
     previousSan,

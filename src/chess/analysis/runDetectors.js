@@ -15,134 +15,24 @@ import {
 function normalize(d) {
   if (!d) return null;
 
-  const base = {
-    priority: d.priority ?? 99,
+  return {
+    type: d.type === "mateInOne" ? "mateThreat" : d.type || "unknown",
     severity: d.severity ?? 1,
     targets: d.targets ?? [],
-    tags: d.tags ?? {},
+    tags: {
+      ...(d.tags ?? {}),
+      ...(d.type === "mateInOne"
+        ? {
+            mate: true,
+            opponent: d.side === "opponent",
+          }
+        : {}),
+    },
+    piece: d.piece,
+    side: d.side,
+
+    reason: d.reason ?? null, // 👈 AICI
   };
-
-  switch (d.type) {
-    case "mateInOne":
-      return {
-        type: "mateThreat",
-        ...base,
-        priority: 1,
-        severity: 3,
-        tags: {
-          ...base.tags,
-          mate: true,
-          opponent: d.side === "opponent",
-        },
-      };
-
-    case "materialLoss":
-      return {
-        type: "materialLoss",
-        ...base,
-        priority: 2,
-        severity: 3,
-      };
-
-    case "materialGain":
-      return {
-        type: "materialGain",
-        ...base,
-        priority: 2,
-        severity: 2,
-      };
-
-
-
-    case "moveToSafety":
-      return {
-        type: "moveToSafety",
-        ...base,
-        priority: 2,
-        severity: 2,
-      };
-
-    case "hanging":
-      return {
-        type: "hanging",
-        ...base,
-        priority: 1,
-        severity: 3,
-      };
-
-    case "pressure":
-    case "enemyPressure":
-      return {
-        type: d.type,
-        ...base,
-        priority: 3,
-        severity: 2,
-      };
-
-    case "battery":
-      return {
-          type: "battery",
-          ...base,
-          priority: 3,
-          severity: 2,
-      };
-    case "pin":
-      return {
-        type: "pin",
-        ...base,
-        priority: 3,
-        severity: 2,
-      };
-    case "ignoredAttack":
-      return {
-        type: "ignoredAttack",
-        ...base,
-        priority: 6,
-        severity: 3,
-      };
-
-    case "attack":
-      return {
-        type: "attack",
-        ...base,
-        priority: 3,
-        severity: 2,
-      };
-
-    case "check":
-    case "castle":
-      return {
-        type: d.type,
-        ...base,
-        priority: 1,
-        severity: 2,
-      };
-
-    case "capture":
-    case "recapture":
-      return {
-        type: d.type,
-        ...base,
-        priority: 2,
-        severity: 2,
-      };
-
-    default:
-      return {
-        type: d.type || "unknown",
-        ...base,
-      };
-  }
-}
-
-function resolveConflicts(signals) {
-  const hasMate = signals.some((s) => s.type === "mateThreat");
-
-  if (hasMate) {
-    return signals.filter((s) => s.type === "mateThreat");
-  }
-
-  return signals;
 }
 
 export function runDetectors(features) {
@@ -160,8 +50,7 @@ export function runDetectors(features) {
     playedMove = null;
   }
 
-
-  const raw = [
+  const rawSignals = [
     detectMateThreat(features),
 
     detectBasicMove({
@@ -175,7 +64,6 @@ export function runDetectors(features) {
       chessBefore,
       chessAfter,
       move: playedMove,
-      
     }),
 
     detectPin({
@@ -192,20 +80,12 @@ export function runDetectors(features) {
       ...features,
       chessAfter,
       move: playedMove,
-
     }),
 
     detectMaterialLoss(features),
     detectIgnoredAttack(features),
     detectHangingPiece(features),
-
-
   ].filter(Boolean);
 
-  const normalized = raw.map(normalize).filter(Boolean);
-  const cleaned = resolveConflicts(normalized);
-
-  cleaned.sort((a, b) => a.priority - b.priority);
-
-  return cleaned;
+  return rawSignals.map(normalize).filter(Boolean);
 }

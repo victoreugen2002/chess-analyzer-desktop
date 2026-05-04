@@ -1,6 +1,6 @@
 import { Chess } from "chess.js";
 import { getAttackedSquaresByPiece } from "../utils";
-import { getPieceName } from "../core/pieces";
+import { getPieceName, getPieceValue } from "../core/pieces";
 
 export function setFenTurn(fen, side) {
   const parts = fen.split(" ");
@@ -31,6 +31,8 @@ function getPieces(chess, color) {
         square,
         type: piece.type,
         color: piece.color,
+        name: getPieceName(piece),
+        value: getPieceValue(piece),
       });
     }
   }

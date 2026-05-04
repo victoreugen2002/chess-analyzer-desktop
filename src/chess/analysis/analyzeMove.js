@@ -46,6 +46,7 @@ export function analyzeMove(input) {
     bestMove,
     beforeEval: bestEval,
     afterEval: playedEval,
+      playedEval,
     side,
     fenBefore,
     fenAfter,

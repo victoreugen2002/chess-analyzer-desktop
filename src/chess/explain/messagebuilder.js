@@ -48,6 +48,15 @@ export function buildCoachMessage(signal) {
     case "materialLoss": {
       const target = signal.targets?.[0];
       const name = getPieceName(target?.piece || signal.piece) || "piece";
+
+      if (signal.reason === "recapture") {
+        return `This loses a ${name} to an immediate recapture.`;
+      }
+
+      if (signal.reason === "undefended") {
+        return `This allows the ${name} to become undefended and is lost.`;
+      }
+
       return `This loses a ${name}.`;
     }
 
