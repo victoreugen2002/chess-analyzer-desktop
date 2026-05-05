@@ -12,6 +12,7 @@ import {
   detectUnpin,
   detectDiscoveredAttack,
   detectDiscoveredCheck,
+  detectFork,
   detectBasicMove,
 } from "../detectors";
 
@@ -96,6 +97,11 @@ export function runDetectors(features) {
     detectBattery(features),
 
     detectMaterialGain(features),
+
+    detectFork({
+      chessAfter,
+      move: playedMove,
+    }),
 
     detectAttack({
       ...features,

@@ -85,6 +85,21 @@ export function buildCoachMessage(signal) {
       const attacker = getPieceName(signal.tags?.attacker) || "piece";
       return `This opens a discovered check from the ${attacker}.`;
     }
+    case "fork": {
+      if (!signal.targets?.length) return "";
+
+      const text = signal.targets.map(formatTarget).join(" and ");
+
+      if (signal.tags?.kind === "doubleAttack") {
+        return `This creates a double attack, also attacking ${text}.`;
+      }
+
+      if (signal.tags?.includesCheck) {
+        return `This creates a fork, checking the king and attacking ${text}.`;
+      }
+
+      return `This creates a fork, attacking ${text}.`;
+    }
     case "discoveredAttack": {
       const target = signal.targets?.[0];
       if (!target) return "";

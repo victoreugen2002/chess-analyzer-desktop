@@ -15,6 +15,7 @@ const SIGNAL_RULES = {
   castle: { priority: 86, group: "positive", combinable: false, allowExtras: false },
   discoveredCheck: { priority: 85, group: "tactical", combinable: true, allowExtras: true },
   check: { priority: 84, group: "tactical", combinable: false, allowExtras: true },
+  fork: { priority: 83, group: "tactical", combinable: true, allowExtras: true },
 
   // Tactical motifs
 
@@ -116,16 +117,30 @@ function removeRedundantSignals(signals = []) {
   );
 
   return signals.filter((signal) => {
+    if (
+      types.has("fork") &&
+      ["attack", "check", "ignoredAttack", "hanging", "enemyPressure"].includes(signal.type)
+    ) {
+      return false;
+    }
+
     if (types.has("discoveredCheck") && signal.type === "check") {
       return false;
     }
 
     if (
       signal.type === "moveToSafety" &&
-      (types.has("discoveredCheck") || types.has("check") || types.has("attack") || types.has("discoveredAttack"))
+      (
+        types.has("fork") ||
+        types.has("discoveredCheck") ||
+        types.has("check") ||
+        types.has("attack") ||
+        types.has("discoveredAttack")
+      )
     ) {
       return false;
     }
+
     if (
       signal.type === "attack" &&
       signal.targets?.some((t) => pinSquares.includes(t.square))
