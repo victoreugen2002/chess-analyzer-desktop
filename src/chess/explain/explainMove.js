@@ -4,31 +4,42 @@ import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName, PIECE_VALUES } from "../core/pieces";
 
 const SIGNAL_RULES = {
+  // Game-changing / critical
   materialLoss: { priority: 100, group: "critical", combinable: false, allowExtras: false },
   mateThreat: { priority: 98, group: "critical", combinable: false, allowExtras: false },
   materialGain: { priority: 94, group: "critical", combinable: false, allowExtras: false },
 
+  // Direct forcing / obvious good moves
   recapture: { priority: 90, group: "positive", combinable: false, allowExtras: true },
   capture: { priority: 88, group: "positive", combinable: false, allowExtras: true },
   castle: { priority: 86, group: "positive", combinable: false, allowExtras: false },
-  check: { priority: 84, group: "tactical", combinable: false, allowExtras: false },
+  discoveredCheck: { priority: 85, group: "tactical", combinable: true, allowExtras: true },
+  check: { priority: 84, group: "tactical", combinable: false, allowExtras: true },
+
+  // Tactical motifs
 
   pin: { priority: 82, group: "tactical", combinable: true, allowExtras: true },
-  unpin: { priority: 81, group: "positive", combinable: true, allowExtras: true },
   battery: { priority: 80, group: "tactical", combinable: true, allowExtras: true },
   attack: { priority: 78, group: "tactical", combinable: true, allowExtras: true },
 
-  ignoredAttack: { priority: 76, group: "warning", combinable: true, allowExtras: true },
-  hanging: { priority: 74, group: "warning", combinable: true, allowExtras: true },
-  enemyPressure: { priority: 72, group: "tactical", combinable: true, allowExtras: true },
+  // Defensive / improving moves
+  unpin: { priority: 77, group: "positive", combinable: true, allowExtras: true },
+  moveToSafety: { priority: 76, group: "positive", combinable: true, allowExtras: true },
 
-  moveToSafety: { priority: 70, group: "positive", combinable: true, allowExtras: true },
+  // Warnings / problems
+  ignoredAttack: { priority: 74, group: "warning", combinable: true, allowExtras: true },
+  hanging: { priority: 72, group: "warning", combinable: true, allowExtras: true },
+
+  // Softer positional/tactical pressure
+  enemyPressure: { priority: 70, group: "tactical", combinable: true, allowExtras: true },
 };
 
 const EMPTY_TARGET_TYPES = [
   "attack",
   "battery",
   "pin",
+  "unpin",
+  "discoveredAttack",
   "enemyPressure",
   "ignoredAttack",
   "hanging",
@@ -105,6 +116,16 @@ function removeRedundantSignals(signals = []) {
   );
 
   return signals.filter((signal) => {
+    if (types.has("discoveredCheck") && signal.type === "check") {
+      return false;
+    }
+
+    if (
+      signal.type === "moveToSafety" &&
+      (types.has("discoveredCheck") || types.has("check") || types.has("attack") || types.has("discoveredAttack"))
+    ) {
+      return false;
+    }
     if (
       signal.type === "attack" &&
       signal.targets?.some((t) => pinSquares.includes(t.square))

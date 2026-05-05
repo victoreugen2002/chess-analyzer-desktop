@@ -81,6 +81,19 @@ export function buildCoachMessage(signal) {
       return `This leaves the ${name} on ${target.square} under pressure.`;
     }
 
+    case "discoveredCheck": {
+      const attacker = getPieceName(signal.tags?.attacker) || "piece";
+      return `This opens a discovered check from the ${attacker}.`;
+    }
+    case "discoveredAttack": {
+      const target = signal.targets?.[0];
+      if (!target) return "";
+
+      const attacker = getPieceName(signal.tags?.attacker) || "piece";
+      const targetName = getPieceName(target.piece) || "piece";
+
+      return `This opens a discovered attack from the ${attacker} on the ${targetName} on ${target.square}.`;
+    }
     case "moveToSafety": {
       const piece = getPieceName(signal.tags?.piece);
       const attacker = getPieceName(signal.tags?.attacker);

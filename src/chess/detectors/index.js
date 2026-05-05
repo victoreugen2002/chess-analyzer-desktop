@@ -6,3 +6,4 @@ export { detectBattery } from "./battery";
 export { detectHangingPiece } from "./hanging";
 export { detectPin, detectUnpin } from "./pinDetector";
 export { detectBasicMove } from "./basicMoves";
+export { detectDiscoveredAttack, detectDiscoveredCheck } from "./discoveredAttack";

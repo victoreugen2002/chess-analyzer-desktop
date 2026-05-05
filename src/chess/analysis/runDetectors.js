@@ -10,6 +10,8 @@ import {
   detectMoveToSafety,
   detectPin,
   detectUnpin,
+  detectDiscoveredAttack,
+  detectDiscoveredCheck,
   detectBasicMove,
 } from "../detectors";
 
@@ -61,6 +63,12 @@ export function runDetectors(features) {
       previousSan: features.previousSan,
     }),
 
+    detectDiscoveredCheck({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
+
     detectMoveToSafety({
       chessBefore,
       chessAfter,
@@ -74,6 +82,12 @@ export function runDetectors(features) {
     }),
 
     detectUnpin({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
+
+    detectDiscoveredAttack({
       chessBefore,
       chessAfter,
       move: playedMove,
