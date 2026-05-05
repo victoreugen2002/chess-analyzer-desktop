@@ -9,6 +9,7 @@ import {
   detectMaterialGain,
   detectMoveToSafety,
   detectPin,
+  detectUnpin,
   detectBasicMove,
 } from "../detectors";
 
@@ -67,6 +68,12 @@ export function runDetectors(features) {
     }),
 
     detectPin({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
+
+    detectUnpin({
       chessBefore,
       chessAfter,
       move: playedMove,

@@ -106,7 +106,15 @@ export function buildCoachMessage(signal) {
     case "pin": {
       const target = signal.targets?.[0];
       const name = getPieceName(target?.piece) || "piece";
-      return `This pins the ${name} on ${target.square} to the king.`;
+      const pinnedTo = signal.tags?.pinnedTo || "king";
+
+      return `This pins the ${name} on ${target.square} to the ${pinnedTo}.`;
+    }
+    case "unpin": {
+      const target = signal.targets?.[0];
+      const name = getPieceName(target?.piece) || "piece";
+
+      return `This breaks the pin on the ${name} on ${target.square}.`;
     }
     case "ignoredAttack": {
       if (!signal.targets?.length) return "";

@@ -14,6 +14,7 @@ const SIGNAL_RULES = {
   check: { priority: 84, group: "tactical", combinable: false, allowExtras: false },
 
   pin: { priority: 82, group: "tactical", combinable: true, allowExtras: true },
+  unpin: { priority: 81, group: "positive", combinable: true, allowExtras: true },
   battery: { priority: 80, group: "tactical", combinable: true, allowExtras: true },
   attack: { priority: 78, group: "tactical", combinable: true, allowExtras: true },
 
