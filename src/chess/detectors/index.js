@@ -9,3 +9,4 @@ export { detectBasicMove } from "./basicMoves";
 export { detectDiscoveredAttack, detectDiscoveredCheck } from "./discoveredAttack";
 export { detectFork } from "./forkDetector";
 export { detectSkewer } from "./skewerDetector";
+export { detectProtectsAttackedPiece } from "./protectsAttackedPiece";

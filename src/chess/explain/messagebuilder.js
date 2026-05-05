@@ -80,7 +80,13 @@ export function buildCoachMessage(signal) {
 
       return `This leaves the ${name} on ${target.square} under pressure.`;
     }
+    case "protectsAttackedPiece": {
+      const target = signal.targets?.[0];
+      if (!target) return "";
 
+      const name = getPieceName(target.piece) || "piece";
+      return `This protects the attacked ${name} on ${target.square}.`;
+    }
     case "skewer": {
       const front = signal.targets?.[0];
       const rear = signal.targets?.[1];

@@ -26,7 +26,7 @@ const SIGNAL_RULES = {
   pin: { priority: 81, group: "tactical", combinable: true, allowExtras: true },
 
   moveToSafety: { priority: 76, group: "positive", combinable: true, allowExtras: true },
-
+  protectsAttackedPiece: { priority: 75, group: "positive", combinable: true, allowExtras: true },
   // Warnings / problems
   ignoredAttack: { priority: 74, group: "warning", combinable: true, allowExtras: true },
   hanging: { priority: 72, group: "warning", combinable: true, allowExtras: true },
@@ -45,6 +45,7 @@ const EMPTY_TARGET_TYPES = [
   "ignoredAttack",
   "hanging",
   "skewer",
+  "protectsAttackedPiece",
 ];
 
 const SUPPRESS_LABEL_TYPES = [
@@ -126,6 +127,18 @@ function removeRedundantSignals(signals = []) {
   );
 
   return signals.filter((signal) => {
+      if (
+        signal.type === "protectsAttackedPiece" &&
+        (
+          types.has("fork") ||
+          types.has("skewer") ||
+          types.has("discoveredCheck") ||
+          types.has("mateThreat") ||
+          types.has("materialGain")
+        )
+      ) {
+      return false;
+    }
     if (types.has("skewer") && ["fork", "attack"].includes(signal.type)) {
       return false;
     }

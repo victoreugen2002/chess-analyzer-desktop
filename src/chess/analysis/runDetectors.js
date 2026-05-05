@@ -14,6 +14,7 @@ import {
   detectDiscoveredCheck,
   detectFork,
   detectSkewer,
+  detectProtectsAttackedPiece,
   detectBasicMove,
 } from "../detectors";
 
@@ -78,6 +79,12 @@ export function runDetectors(features) {
     }),
 
     detectMoveToSafety({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
+
+    detectProtectsAttackedPiece({
       chessBefore,
       chessAfter,
       move: playedMove,
