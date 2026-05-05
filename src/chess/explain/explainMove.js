@@ -22,9 +22,9 @@ const SIGNAL_RULES = {
   pin: { priority: 82, group: "tactical", combinable: true, allowExtras: true },
   battery: { priority: 80, group: "tactical", combinable: true, allowExtras: true },
   attack: { priority: 78, group: "tactical", combinable: true, allowExtras: true },
+  skewer: { priority: 82, group: "tactical", combinable: true, allowExtras: true },
+  pin: { priority: 81, group: "tactical", combinable: true, allowExtras: true },
 
-  // Defensive / improving moves
-  unpin: { priority: 77, group: "positive", combinable: true, allowExtras: true },
   moveToSafety: { priority: 76, group: "positive", combinable: true, allowExtras: true },
 
   // Warnings / problems
@@ -44,6 +44,7 @@ const EMPTY_TARGET_TYPES = [
   "enemyPressure",
   "ignoredAttack",
   "hanging",
+  "skewer",
 ];
 
 const SUPPRESS_LABEL_TYPES = [
@@ -112,11 +113,26 @@ function removeRedundantSignals(signals = []) {
     .filter((s) => s.type === "pin")
     .flatMap((s) => s.targets?.map((t) => t.square) || []);
 
+  const skewerSquares = signals
+  .filter((s) => s.type === "skewer")
+  .flatMap((s) => s.targets?.map((t) => t.square) || []);
+
+  const hasKingSkewer = signals.some(
+    (s) => s.type === "skewer" && s.targets?.[0]?.piece === "k"
+  );
+
   const captureSignals = signals.filter((s) =>
     ["capture", "recapture"].includes(s.type)
   );
 
   return signals.filter((signal) => {
+    if (types.has("skewer") && ["fork", "attack"].includes(signal.type)) {
+      return false;
+    }
+
+    if (hasKingSkewer && signal.type === "check") {
+      return false;
+    }
     if (
       types.has("fork") &&
       ["attack", "check", "ignoredAttack", "hanging", "enemyPressure"].includes(signal.type)
@@ -248,8 +264,8 @@ function orderSignalsForMessage(signals = []) {
 
 function sentenceWithContrast(message) {
   if (!message) return "";
-  return `However, ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
-}
+    return `However, ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
+  }
 
 function buildCombinedMessage(signals = []) {
   const ordered = orderSignalsForMessage(signals);

@@ -8,3 +8,4 @@ export { detectPin, detectUnpin } from "./pinDetector";
 export { detectBasicMove } from "./basicMoves";
 export { detectDiscoveredAttack, detectDiscoveredCheck } from "./discoveredAttack";
 export { detectFork } from "./forkDetector";
+export { detectSkewer } from "./skewerDetector";

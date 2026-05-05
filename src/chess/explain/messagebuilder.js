@@ -81,6 +81,19 @@ export function buildCoachMessage(signal) {
       return `This leaves the ${name} on ${target.square} under pressure.`;
     }
 
+    case "skewer": {
+      const front = signal.targets?.[0];
+      const rear = signal.targets?.[1];
+
+      if (!front || !rear) return "";
+
+      const frontName = getPieceName(front.piece) || "piece";
+      const rearName = getPieceName(rear.piece) || "piece";
+      const attackerName = getPieceName(signal.tags?.attacker) || "piece";
+
+      return `This creates a skewer with the ${attackerName}: the ${frontName} on ${front.square} is attacked, with the ${rearName} behind it on ${rear.square}.`;
+    }
+
     case "discoveredCheck": {
       const attacker = getPieceName(signal.tags?.attacker) || "piece";
       return `This opens a discovered check from the ${attacker}.`;

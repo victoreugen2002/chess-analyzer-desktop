@@ -13,6 +13,7 @@ import {
   detectDiscoveredAttack,
   detectDiscoveredCheck,
   detectFork,
+  detectSkewer,
   detectBasicMove,
 } from "../detectors";
 
@@ -65,6 +66,12 @@ export function runDetectors(features) {
     }),
 
     detectDiscoveredCheck({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
+
+    detectSkewer({
       chessBefore,
       chessAfter,
       move: playedMove,
