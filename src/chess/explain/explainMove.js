@@ -111,6 +111,13 @@ function removeDuplicateSignals(signals = []) {
 function removeRedundantSignals(signals = []) {
   const types = new Set(signals.map((s) => s.type));
 
+  const hasDirectTactic =
+    types.has("fork") ||
+    types.has("skewer") ||
+    types.has("discoveredCheck") ||
+    types.has("discoveredAttack") ||
+    types.has("mateThreat");
+
   const attackSquares = signals
     .filter((s) => s.type === "attack")
     .flatMap((s) => s.targets?.map((t) => t.square) || []);
@@ -145,6 +152,9 @@ function removeRedundantSignals(signals = []) {
   });
 
   return signals.filter((signal) => {
+    if (signal.type === "greedyCapturePunishment" && hasDirectTactic) {
+      return false;
+    }
     if (
       signal.type === "battery" &&
       signal.targets?.some((t) => attackSquares.includes(t.square))
