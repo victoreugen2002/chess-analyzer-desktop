@@ -12,3 +12,4 @@ export { detectSkewer } from "./skewerDetector";
 export { detectProtectsAttackedPiece } from "./protectsAttackedPiece";
 export { detectRemoveDefender } from "./removeDefender";
 export { detectTacticalSequence, detectTacticalContinuation } from "./tacticalSequence";
+export { detectGreedyCapturePunishment } from "./greedyCapturePunishment";

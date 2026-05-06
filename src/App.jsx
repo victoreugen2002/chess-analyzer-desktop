@@ -2,6 +2,7 @@ import { Chess } from "chess.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLinePreview } from "./chess/ui/useLinePreview";
 import { analyzeMove } from "./chess/analysis/analyzeMove";
+import { buildGreedyCaptureValidations } from "./chess/analysis/greedyCaptureValidation";
 import { buildMoveObjectsFromPgn } from "./chess/pgn/pgnParser";
 import { getProgressWidth, getBoardPixelSize } from "./chess/ui/uiHelpers";
 import { createMoveAudio } from "./chess/ui/sounds";
@@ -272,6 +273,20 @@ export default function App() {
             ? 0
             : before.normalizedScore - after.normalizedScore;
 
+        const greedyCaptureValidations = await buildGreedyCaptureValidations({
+          item: {
+            fenBefore: previousFen,
+            fenAfter: chess.fen(),
+            san: move.san,
+            side: move.color,
+            loss,
+          },
+          moves: history,
+          moveIndex: history.length - 1,
+          analyzeFen: window.engineApi.analyzeFen,
+          depth: Math.min(depth, 10),
+        });
+
         const lastMoveAnalysis = analyzeMove({
           ply: history.length,
           fenBefore: previousFen,
@@ -286,6 +301,7 @@ export default function App() {
           moveIndex: history.length - 1,
           playedLine: move.lan,
           lan: move.lan,
+          greedyCaptureValidations,
         });
 
         setLiveCoachAnalysis(lastMoveAnalysis);
@@ -465,13 +481,27 @@ export default function App() {
 
       const raw = await window.engineApi.analyzeGame(customGameData.moves, depth);
 
-      const results = raw.map((item, index) =>
-        analyzeMove({
-          ...item,
+      const results = [];
+
+      for (let index = 0; index < raw.length; index++) {
+        const item = raw[index];
+        const greedyCaptureValidations = await buildGreedyCaptureValidations({
+          item,
           moves: customGameData.moves,
           moveIndex: index,
-        })
-      );
+          analyzeFen: window.engineApi.analyzeFen,
+          depth: Math.min(depth, 10),
+        });
+
+        results.push(
+          analyzeMove({
+            ...item,
+            moves: customGameData.moves,
+            moveIndex: index,
+            greedyCaptureValidations,
+          })
+        );
+      }
       setAnalysis(results);
       if (coachEnabled) {
         const lastResult = results[results.length - 1];

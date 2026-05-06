@@ -18,6 +18,7 @@ import {
   detectRemoveDefender,
   detectBasicMove,
   detectTacticalSequence,
+  detectGreedyCapturePunishment,
 } from "../detectors";
 
 function normalize(d) {
@@ -121,6 +122,8 @@ export function runDetectors(features) {
       moveIndex: features.moveIndex,
       playedLine: features.playedLine,
     }),
+
+    detectGreedyCapturePunishment(features),
 
     detectRemoveDefender({
       chessBefore,

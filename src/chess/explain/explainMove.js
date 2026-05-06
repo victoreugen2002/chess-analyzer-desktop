@@ -7,6 +7,7 @@ const SIGNAL_RULES = {
   // Critical / game-changing
   tacticalSequence: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
   tacticalContinuation: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
+  greedyCapturePunishment: { priority: 101, group: "tactical", combinable: false, allowExtras: false },
   materialLoss: { priority: 100, group: "critical", combinable: false, allowExtras: false },
   mateThreat: { priority: 98, group: "critical", combinable: false, allowExtras: false },
   materialGain: { priority: 94, group: "critical", combinable: false, allowExtras: false },
@@ -55,6 +56,7 @@ const SUPPRESS_LABEL_TYPES = [
   "materialLoss",
   "materialGain",
   "mateThreat",
+  "greedyCapturePunishment",
   "hanging",
   "enemyPressure",
   //"recapture",
@@ -255,7 +257,7 @@ function removeRedundantSignals(signals = []) {
     }
 
     if (
-      (types.has("tacticalSequence") || types.has("tacticalContinuation")) &&
+      (types.has("tacticalSequence") || types.has("tacticalContinuation") || types.has("greedyCapturePunishment")) &&
       ["materialLoss", "capture", "recapture", "attack", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)
     ) {
       return false;

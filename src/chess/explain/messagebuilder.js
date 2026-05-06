@@ -35,6 +35,20 @@ export function buildCoachMessage(signal) {
         return `This captures the ${name}${target.square ? ` on ${target.square}` : ""}.`;
       }
 
+
+    case "greedyCapturePunishment": {
+      const exposedName = signal.tags?.exposedPieceName || getPieceName(signal.tags?.exposedPiece) || "piece";
+      const exposedSquare = signal.tags?.exposedSquare || signal.targets?.[0]?.square;
+      const greedySide = signal.tags?.greedySide || "the opponent";
+      const greedySan = signal.tags?.greedyCaptureSan;
+      const punishingSide = signal.tags?.punishingSide || "the player";
+      const replySan = signal.tags?.tacticalReplySan;
+      const motifText = signal.tags?.motifText || "with a tactical response";
+
+      if (!exposedSquare || !greedySan || !replySan) return "";
+
+      return `This move appears to leave the ${exposedName} on ${exposedSquare} undefended, but if ${greedySide} grabs it with ${greedySan}, ${punishingSide} has ${replySan} ${motifText}.`;
+    }
     case "tacticalSequence":
     case "tacticalContinuation": {
       const recapturingSide = signal.tags?.recapturingSide || "the opponent";
