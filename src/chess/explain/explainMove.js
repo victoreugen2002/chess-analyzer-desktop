@@ -4,35 +4,36 @@ import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName, PIECE_VALUES } from "../core/pieces";
 
 const SIGNAL_RULES = {
-  // Game-changing / critical
+  // Critical / game-changing
   materialLoss: { priority: 100, group: "critical", combinable: false, allowExtras: false },
   mateThreat: { priority: 98, group: "critical", combinable: false, allowExtras: false },
   materialGain: { priority: 94, group: "critical", combinable: false, allowExtras: false },
 
-  // Direct forcing / obvious good moves
+  // Direct forcing / obvious moves
   recapture: { priority: 90, group: "positive", combinable: false, allowExtras: true },
   capture: { priority: 88, group: "positive", combinable: false, allowExtras: true },
   castle: { priority: 86, group: "positive", combinable: false, allowExtras: false },
+
+  // Tactical motifs
   discoveredCheck: { priority: 85, group: "tactical", combinable: true, allowExtras: true },
   check: { priority: 84, group: "tactical", combinable: false, allowExtras: true },
   fork: { priority: 83, group: "tactical", combinable: true, allowExtras: true },
-
-  // Tactical motifs
-
-  pin: { priority: 82, group: "tactical", combinable: true, allowExtras: true },
-  battery: { priority: 80, group: "tactical", combinable: true, allowExtras: true },
-  attack: { priority: 78, group: "tactical", combinable: true, allowExtras: true },
   skewer: { priority: 82, group: "tactical", combinable: true, allowExtras: true },
-  pin: { priority: 81, group: "tactical", combinable: true, allowExtras: true },
+  discoveredAttack: { priority: 81, group: "tactical", combinable: true, allowExtras: true },
+  pin: { priority: 80, group: "tactical", combinable: true, allowExtras: true },
+  battery: { priority: 79, group: "tactical", combinable: true, allowExtras: true },
+  removeDefender: { priority: 78, group: "tactical", combinable: true, allowExtras: true },
+  attack: { priority: 77, group: "tactical", combinable: true, allowExtras: true },
 
-  moveToSafety: { priority: 76, group: "positive", combinable: true, allowExtras: true },
-  protectsAttackedPiece: { priority: 75, group: "positive", combinable: true, allowExtras: true },
-  // Warnings / problems
-  ignoredAttack: { priority: 74, group: "warning", combinable: true, allowExtras: true },
-  hanging: { priority: 72, group: "warning", combinable: true, allowExtras: true },
+  // Defensive / improving
+  unpin: { priority: 76, group: "positive", combinable: true, allowExtras: true },
+  moveToSafety: { priority: 75, group: "positive", combinable: true, allowExtras: true },
+  protectsAttackedPiece: { priority: 74, group: "positive", combinable: true, allowExtras: true },
 
-  // Softer positional/tactical pressure
-  enemyPressure: { priority: 70, group: "tactical", combinable: true, allowExtras: true },
+  // Warnings
+  ignoredAttack: { priority: 72, group: "warning", combinable: true, allowExtras: true },
+  hanging: { priority: 70, group: "warning", combinable: true, allowExtras: true },
+  enemyPressure: { priority: 68, group: "tactical", combinable: true, allowExtras: true },
 };
 
 const EMPTY_TARGET_TYPES = [
@@ -45,6 +46,7 @@ const EMPTY_TARGET_TYPES = [
   "ignoredAttack",
   "hanging",
   "skewer",
+  "removeDefender",
   "protectsAttackedPiece",
 ];
 
@@ -54,7 +56,7 @@ const SUPPRESS_LABEL_TYPES = [
   "mateThreat",
   "hanging",
   "enemyPressure",
-  "recapture",
+  //"recapture",
   // "capture",
 ];
 
@@ -126,17 +128,73 @@ function removeRedundantSignals(signals = []) {
     ["capture", "recapture"].includes(s.type)
   );
 
+  const removeDefenderSquares = signals
+    .filter((s) => s.type === "removeDefender")
+    .flatMap((s) => s.targets?.map((t) => t.square) || []);
+
+  const hasMajorRecapture = captureSignals.some((s) => {
+    if (s.type !== "recapture") return false;
+
+    const target = s.targets?.[0];
+    const value = target?.value || PIECE_VALUES[target?.piece] || 0;
+
+    return value >= 3;
+  });
+
   return signals.filter((signal) => {
-      if (
-        signal.type === "protectsAttackedPiece" &&
-        (
-          types.has("fork") ||
-          types.has("skewer") ||
-          types.has("discoveredCheck") ||
-          types.has("mateThreat") ||
-          types.has("materialGain")
-        )
-      ) {
+    if (
+      signal.type === "battery" &&
+      signal.targets?.some((t) => attackSquares.includes(t.square))
+    ) {
+      return false;
+    }
+
+    if (
+      signal.type === "removeDefender" &&
+      types.has("recapture") &&
+      signal.targets?.[0]?.piece === "p"
+    ) {
+      return false;
+    }
+
+    if (
+      signal.type === "protectsAttackedPiece" &&
+      hasMajorRecapture &&
+      signal.targets?.[0]?.piece === "p"
+    ) {
+      return false;
+    }
+
+    if (
+      signal.type === "attack" &&
+      signal.targets?.some((t) => removeDefenderSquares.includes(t.square))
+    ) {
+      return false;
+    }
+    if (
+      signal.type === "removeDefender" &&
+      (
+        types.has("fork") ||
+        types.has("skewer") ||
+        types.has("discoveredCheck") ||
+        types.has("mateThreat") ||
+        types.has("materialGain")
+      )
+    ) {
+      return false;
+    }
+
+
+    if (
+      signal.type === "protectsAttackedPiece" &&
+      (
+        types.has("fork") ||
+        types.has("skewer") ||
+        types.has("discoveredCheck") ||
+        types.has("mateThreat") ||
+        types.has("materialGain")
+      )
+    ) {
       return false;
     }
     if (types.has("skewer") && ["fork", "attack"].includes(signal.type)) {
@@ -160,7 +218,10 @@ function removeRedundantSignals(signals = []) {
     if (
       signal.type === "moveToSafety" &&
       (
+        types.has("recapture") ||
+        types.has("capture") ||
         types.has("fork") ||
+        types.has("skewer") ||
         types.has("discoveredCheck") ||
         types.has("check") ||
         types.has("attack") ||

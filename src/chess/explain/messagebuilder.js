@@ -68,6 +68,16 @@ export function buildCoachMessage(signal) {
       return `This leaves the ${name} on ${target.square} undefended.`;
     }
 
+    case "removeDefender": {
+      const target = signal.targets?.[0];
+      if (!target) return "";
+
+      const defenderName = getPieceName(signal.tags?.defender) || "piece";
+      const targetName = getPieceName(target.piece) || "piece";
+
+      return `This removes the ${defenderName} defending the ${targetName} on ${target.square}.`;
+    }
+
     case "enemyPressure": {
       const target = signal.targets?.[0];
       if (!target) return "";

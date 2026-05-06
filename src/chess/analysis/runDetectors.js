@@ -15,6 +15,7 @@ import {
   detectFork,
   detectSkewer,
   detectProtectsAttackedPiece,
+  detectRemoveDefender,
   detectBasicMove,
 } from "../detectors";
 
@@ -111,6 +112,12 @@ export function runDetectors(features) {
     detectBattery(features),
 
     detectMaterialGain(features),
+
+    detectRemoveDefender({
+      chessBefore,
+      chessAfter,
+      move: playedMove,
+    }),
 
     detectFork({
       chessAfter,

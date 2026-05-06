@@ -55,8 +55,14 @@ export function detectProtectsAttackedPiece({ chessBefore, chessAfter, move } = 
     const attackersBefore = getAttackers(chessBefore, square, enemyColor);
     if (!attackersBefore.length) continue;
 
+    const attackersAfter = getAttackers(chessAfter, square, enemyColor);
+    if (!attackersAfter.length) continue;
+
     const defendersBefore = getDefenders(chessBefore, square, ownColor);
     const defendersAfter = getDefenders(chessAfter, square, ownColor);
+
+    if (defendersBefore.length >= attackersBefore.length) continue;
+    if (defendersAfter.length < attackersAfter.length) continue;
 
     const movedPieceNowDefends = getAttackedSquaresByPiece(
       chessAfter,

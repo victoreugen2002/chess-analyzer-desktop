@@ -10,3 +10,4 @@ export { detectDiscoveredAttack, detectDiscoveredCheck } from "./discoveredAttac
 export { detectFork } from "./forkDetector";
 export { detectSkewer } from "./skewerDetector";
 export { detectProtectsAttackedPiece } from "./protectsAttackedPiece";
+export { detectRemoveDefender } from "./removeDefender";

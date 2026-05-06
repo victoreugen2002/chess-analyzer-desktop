@@ -93,6 +93,10 @@ function findPins(chess, pinnedColor) {
             const isUsefulRelativePin =
               piece.type === "k" || targetValue > pinnedValue;
 
+            if (pinned.type === "p" && piece.type !== "k") {
+              break;
+            }
+
             if (isImportantTarget && isUsefulRelativePin) {
               pins.push({
                 attacker: { ...attacker, square: attackerSquare },

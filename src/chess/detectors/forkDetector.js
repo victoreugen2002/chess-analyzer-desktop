@@ -55,8 +55,8 @@ export function detectFork({ chessAfter, move } = {}) {
     const isImportant =
       target.type === "q" ||
       target.type === "r" ||
-      value >= 3 ||
-      value > attackerValue;
+      value > attackerValue ||
+      (value >= 3 && !isDefended);
 
     if (!isImportant) continue;
 
