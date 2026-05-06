@@ -35,11 +35,10 @@ export function buildCoachMessage(signal) {
         return `This captures the ${name}${target.square ? ` on ${target.square}` : ""}.`;
       }
 
-    case "tacticalSequence":
     case "tacticalContinuation": {
       const recapturingSide = signal.tags?.recapturingSide || "the opponent";
       const punishingSide = signal.tags?.punishingSide || "the player";
-      const replySan = signal.tags?.tacticalReplySan || signal.tags?.replySan;
+      const replySan = signal.tags?.replySan;
       const motifText = signal.tags?.motifText || "with a tactical continuation";
 
       if (!replySan) return "";

@@ -11,4 +11,4 @@ export { detectFork } from "./forkDetector";
 export { detectSkewer } from "./skewerDetector";
 export { detectProtectsAttackedPiece } from "./protectsAttackedPiece";
 export { detectRemoveDefender } from "./removeDefender";
-export { detectTacticalSequence, detectTacticalContinuation } from "./tacticalSequence";
+export { detectTacticalContinuation } from "./tacticalContinuation";

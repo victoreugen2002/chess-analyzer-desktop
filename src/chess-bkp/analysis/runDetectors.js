@@ -17,7 +17,7 @@ import {
   detectProtectsAttackedPiece,
   detectRemoveDefender,
   detectBasicMove,
-  detectTacticalSequence,
+  detectTacticalContinuation,
 } from "../detectors";
 
 function normalize(d) {
@@ -114,7 +114,7 @@ export function runDetectors(features) {
 
     detectMaterialGain(features),
 
-    detectTacticalSequence({
+    detectTacticalContinuation({
       chessAfter,
       move: playedMove,
       moves: features.moves,

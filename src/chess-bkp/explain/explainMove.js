@@ -5,11 +5,11 @@ import { getPieceName, PIECE_VALUES } from "../core/pieces";
 
 const SIGNAL_RULES = {
   // Critical / game-changing
-  tacticalSequence: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
-  tacticalContinuation: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
   materialLoss: { priority: 100, group: "critical", combinable: false, allowExtras: false },
   mateThreat: { priority: 98, group: "critical", combinable: false, allowExtras: false },
   materialGain: { priority: 94, group: "critical", combinable: false, allowExtras: false },
+  tacticalContinuation: { priority: 92, group: "tactical", combinable: false, allowExtras: true },
+
   // Direct forcing / obvious moves
   recapture: { priority: 90, group: "positive", combinable: false, allowExtras: true },
   capture: { priority: 88, group: "positive", combinable: false, allowExtras: true },
@@ -255,8 +255,8 @@ function removeRedundantSignals(signals = []) {
     }
 
     if (
-      (types.has("tacticalSequence") || types.has("tacticalContinuation")) &&
-      ["materialLoss", "capture", "recapture", "attack", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)
+      types.has("tacticalContinuation") &&
+      ["capture", "recapture", "attack", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)
     ) {
       return false;
     }
