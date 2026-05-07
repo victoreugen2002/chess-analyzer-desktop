@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLinePreview } from "./chess/ui/useLinePreview";
 import { analyzeMove } from "./chess/analysis/analyzeMove";
 import { buildGreedyCaptureValidations } from "./chess/analysis/greedyCaptureValidation";
+import { buildTacticalValidations } from "./chess/analysis/tacticalValidation";
 import { buildMoveObjectsFromFen, buildMoveObjectsFromPgn } from "./chess/pgn/pgnParser";
 import { getProgressWidth, getBoardPixelSize } from "./chess/ui/uiHelpers";
 import { createMoveAudio } from "./chess/ui/sounds";
@@ -274,16 +275,25 @@ export default function App() {
             ? 0
             : before.normalizedScore - after.normalizedScore;
 
+        const moveAnalysisItem = {
+          fenBefore: previousFen,
+          fenAfter: chess.fen(),
+          san: move.san,
+          side: move.color,
+          loss,
+          playedLine: after?.pv || null,
+        };
+
         const greedyCaptureValidations = await buildGreedyCaptureValidations({
-          item: {
-            fenBefore: previousFen,
-            fenAfter: chess.fen(),
-            san: move.san,
-            side: move.color,
-            loss,
-          },
+          item: moveAnalysisItem,
           moves: history,
           moveIndex: history.length - 1,
+          analyzeFen: window.engineApi.analyzeFen,
+          depth: Math.min(depth, 10),
+        });
+
+        const tacticalValidations = await buildTacticalValidations({
+          item: moveAnalysisItem,
           analyzeFen: window.engineApi.analyzeFen,
           depth: Math.min(depth, 10),
         });
@@ -300,9 +310,10 @@ export default function App() {
           loss,
           moves: history,
           moveIndex: history.length - 1,
-          playedLine: move.lan,
+          playedLine: after?.pv || move.lan,
           lan: move.lan,
           greedyCaptureValidations,
+          tacticalValidations,
         });
 
         setLiveCoachAnalysis(lastMoveAnalysis);
@@ -552,12 +563,19 @@ export default function App() {
           depth: Math.min(depth, 10),
         });
 
+        const tacticalValidations = await buildTacticalValidations({
+          item,
+          analyzeFen: window.engineApi.analyzeFen,
+          depth: Math.min(depth, 10),
+        });
+
         results.push(
           analyzeMove({
             ...item,
             moves: customGameData.moves,
             moveIndex: index,
             greedyCaptureValidations,
+            tacticalValidations,
           })
         );
       }

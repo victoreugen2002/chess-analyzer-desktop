@@ -1,10 +1,13 @@
 import { Chess } from "chess.js";
-import { moveToHuman } from "../utils";
+import { moveToHuman, getAttackedSquaresByPiece } from "../utils";
 import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName, PIECE_VALUES } from "../core/pieces";
 
+
 const SIGNAL_RULES = {
   // Critical / game-changing
+  opponentTacticalReply: { priority: 104, group: "critical", combinable: false, allowExtras: false },
+  validatedSkewer: { priority: 103, group: "tactical", combinable: false, allowExtras: true },
   tacticalSequence: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
   tacticalContinuation: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
   greedyCapturePunishment: { priority: 101, group: "tactical", combinable: false, allowExtras: false },
@@ -57,6 +60,7 @@ const SUPPRESS_LABEL_TYPES = [
   "materialGain",
   "mateThreat",
   "greedyCapturePunishment",
+  "opponentTacticalReply",
   "hanging",
   "enemyPressure",
   //"recapture",
@@ -131,6 +135,7 @@ function removeRedundantSignals(signals = [], context = {}) {
 
   const hasDirectTactic =
     types.has("fork") ||
+    types.has("validatedSkewer") ||
     types.has("skewer") ||
     types.has("discoveredCheck") ||
     types.has("discoveredAttack") ||
@@ -159,11 +164,11 @@ function removeRedundantSignals(signals = [], context = {}) {
     .flatMap((s) => s.targets?.map((t) => t.square) || []);
 
   const skewerSquares = signals
-  .filter((s) => s.type === "skewer")
-  .flatMap((s) => s.targets?.map((t) => t.square) || []);
+    .filter((s) => ["skewer", "validatedSkewer"].includes(s.type))
+    .flatMap((s) => s.targets?.map((t) => t.square) || []);
 
   const hasKingSkewer = signals.some(
-    (s) => s.type === "skewer" && s.targets?.[0]?.piece === "k"
+    (s) => ["skewer", "validatedSkewer"].includes(s.type) && s.targets?.[0]?.piece === "k"
   );
 
   const captureSignals = signals.filter((s) =>
@@ -184,6 +189,14 @@ function removeRedundantSignals(signals = [], context = {}) {
   });
 
   return signals.filter((signal) => {
+    if (types.has("validatedSkewer") && signal.type === "skewer") {
+      return false;
+    }
+
+    if (types.has("opponentTacticalReply") && ["materialLoss", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)) {
+      return false;
+    }
+
     if (
       !isSeriousError &&
       hasNonWarningSignal &&
@@ -267,6 +280,7 @@ function removeRedundantSignals(signals = [], context = {}) {
       signal.type === "removeDefender" &&
       (
         types.has("fork") ||
+        types.has("validatedSkewer") ||
         types.has("skewer") ||
         types.has("discoveredCheck") ||
         types.has("mateThreat") ||
@@ -281,6 +295,7 @@ function removeRedundantSignals(signals = [], context = {}) {
       signal.type === "protectsAttackedPiece" &&
       (
         types.has("fork") ||
+        types.has("validatedSkewer") ||
         types.has("skewer") ||
         types.has("discoveredCheck") ||
         types.has("mateThreat") ||
@@ -289,7 +304,7 @@ function removeRedundantSignals(signals = [], context = {}) {
     ) {
       return false;
     }
-    if (types.has("skewer") && ["fork", "attack"].includes(signal.type)) {
+    if ((types.has("skewer") || types.has("validatedSkewer")) && ["fork", "attack"].includes(signal.type)) {
       return false;
     }
 
@@ -313,6 +328,7 @@ function removeRedundantSignals(signals = [], context = {}) {
         types.has("recapture") ||
         types.has("capture") ||
         types.has("fork") ||
+        types.has("validatedSkewer") ||
         types.has("skewer") ||
         types.has("discoveredCheck") ||
         types.has("check") ||
@@ -346,7 +362,7 @@ function removeRedundantSignals(signals = [], context = {}) {
     }
 
     if (
-      (types.has("tacticalSequence") || types.has("tacticalContinuation") || types.has("greedyCapturePunishment")) &&
+      (types.has("tacticalSequence") || types.has("tacticalContinuation") || types.has("greedyCapturePunishment") || types.has("opponentTacticalReply")) &&
       ["materialLoss", "capture", "recapture", "attack", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)
     ) {
       return false;
@@ -627,6 +643,63 @@ function getPunishingReplyText({ playedLine, fenBefore, fenAfter, san, side }) {
   return `${opponent} can answer with ${reply.san}`;
 }
 
+function formatReplyForkTargets(targets = []) {
+  const names = targets
+    .map((target) => getPieceName(target.piece) || "piece")
+    .filter(Boolean);
+
+  if (!names.length) return "material";
+  if (names.length === 1) return `the ${names[0]}`;
+
+  return `the ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+function getReplyForkText({ playedLine, fenBefore, fenAfter, san, side }) {
+  const correctFenAfter = getFenAfterPlayedMove({
+    fenBefore,
+    fenAfter,
+    san,
+    side,
+  });
+
+  const tokens = getPlayedLineTokens(playedLine);
+  if (!correctFenAfter || !tokens.length) return "";
+
+  for (const token of tokens) {
+    try {
+      const chess = new Chess(correctFenAfter);
+      const reply = playMoveToken(chess, token);
+
+      if (!reply || reply.color === side) continue;
+
+      const movedPiece = chess.get(reply.to);
+      if (!movedPiece) continue;
+
+      const enemyColor = reply.color === "w" ? "b" : "w";
+      const attackedSquares = getAttackedSquaresByPiece(chess, reply.to);
+
+      const targets = attackedSquares
+        .map((square) => ({ square, piece: chess.get(square) }))
+        .filter(({ piece }) => piece?.color === enemyColor && piece.type !== "k")
+        .map(({ square, piece }) => ({
+          piece: piece.type,
+          square,
+          value: PIECE_VALUES[piece.type] || 0,
+        }))
+        .filter((target) => target.piece === "q" || target.piece === "r" || target.value >= 3)
+        .sort((a, b) => b.value - a.value);
+
+      if (targets.length < 2) continue;
+
+      return `but it allows ${reply.san}, forking ${formatReplyForkTargets(targets)}`;
+    } catch {
+      // skip illegal token
+    }
+  }
+
+  return "";
+}
+
 export function explainMove({
   label,
   san,
@@ -674,6 +747,18 @@ export function explainMove({
 
   let msg = buildCombinedMessage(messageSignals, messageContext);
 
+  const replyForkText =
+  ["Mistake", "Blunder"].includes(label) &&
+  !messageSignals.some((signal) => signal.type === "opponentTacticalReply")
+    ? getReplyForkText({
+        playedLine,
+        fenBefore,
+        fenAfter,
+        san,
+        side,
+      })
+    : "";
+
   if (wasInCheck && !msg.toLowerCase().includes("check")) {
     msg = `This gets out of check.${msg ? ` ${msg}` : ""}`;
   }
@@ -701,6 +786,13 @@ export function explainMove({
         return `${opener} ${labelText} because ${punishment}. A better move was ${bestHuman}.`;
       }
     }
+
+  if (replyForkText) {
+    const baseMsg = msg ? msg.replace(/\.$/, "") : "This move is tactically weak";
+    const labelText = getLabelSentence(label);
+
+    return `${opener} ${baseMsg}, ${replyForkText}. ${labelText}${bestText}`.trim();
+  }
 
   if (messageSignals.length && msg) {
     const labelText = shouldShowLabel(label, messageSignals)

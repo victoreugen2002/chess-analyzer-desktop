@@ -5,6 +5,17 @@ function formatTarget(t) {
   return `the ${name}${t.square ? ` on ${t.square}` : ""}`;
 }
 
+function formatPieceList(targets = []) {
+  const names = targets
+    .map((target) => getPieceName(target?.piece) || "piece")
+    .filter(Boolean);
+
+  if (!names.length) return "material";
+  if (names.length === 1) return `the ${names[0]}`;
+
+  return `the ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export function buildCoachMessage(signal) {
   if (!signal) return "";
 
@@ -35,6 +46,20 @@ export function buildCoachMessage(signal) {
         return `This captures the ${name}${target.square ? ` on ${target.square}` : ""}.`;
       }
 
+
+    case "opponentTacticalReply": {
+      const replySan = signal.tags?.replySan;
+      const motifText = signal.tags?.motifText || "with a tactical response";
+      const moveAttackText = signal.tags?.moveAttackText;
+
+      if (!replySan) return "";
+
+      if (moveAttackText) {
+        return `${moveAttackText}, but it allows ${replySan}, ${motifText}.`;
+      }
+
+      return `This allows ${replySan}, ${motifText}.`;
+    }
 
     case "greedyCapturePunishment": {
       const exposedName = signal.tags?.exposedPieceName || getPieceName(signal.tags?.exposedPiece) || "piece";
@@ -123,6 +148,7 @@ export function buildCoachMessage(signal) {
       const name = getPieceName(target.piece) || "piece";
       return `This protects the attacked ${name} on ${target.square}.`;
     }
+    case "validatedSkewer":
     case "skewer": {
       const front = signal.targets?.[0];
       const rear = signal.targets?.[1];
@@ -132,6 +158,15 @@ export function buildCoachMessage(signal) {
       const frontName = getPieceName(front.piece) || "piece";
       const rearName = getPieceName(rear.piece) || "piece";
       const attackerName = getPieceName(signal.tags?.attacker) || "piece";
+      const isValidated = signal.type === "validatedSkewer";
+
+      if (isValidated && (signal.tags?.frontIsKing || front.piece === "k")) {
+        return `This creates a skewer with the ${attackerName}: the king on ${front.square} is checked, with the ${rearName} behind it on ${rear.square}.`;
+      }
+
+      if (isValidated) {
+        return `This creates a skewer with the ${attackerName}: the ${frontName} on ${front.square} is attacked, with the ${rearName} behind it on ${rear.square}.`;
+      }
 
       if (signal.tags?.frontIsKing || front.piece === "k") {
         return `This gives check, with the ${rearName} on ${rear.square} lined up behind the king.`;

@@ -123,6 +123,8 @@ export function runDetectors(features) {
       playedLine: features.playedLine,
     }),
 
+    ...(features.tacticalValidations || []),
+
     detectGreedyCapturePunishment(features),
 
     detectRemoveDefender({

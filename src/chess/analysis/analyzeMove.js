@@ -17,6 +17,7 @@ export function analyzeMove(input) {
     moveIndex,
     playedLine,
     greedyCaptureValidations,
+    tacticalValidations,
 
   } = input;
   const previousSan = moves?.[moveIndex - 1]?.san;
@@ -31,6 +32,7 @@ export function analyzeMove(input) {
     moveIndex,
     playedLine,
     greedyCaptureValidations,
+    tacticalValidations,
   });
 
 

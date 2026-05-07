@@ -13,7 +13,7 @@ function sameBatteryPattern(a, b) {
   );
 }
 
-export function extractFeatures({ fenBefore, fenAfter, san, side, previousSan, moves, moveIndex, playedLine, greedyCaptureValidations }) {
+export function extractFeatures({ fenBefore, fenAfter, san, side, previousSan, moves, moveIndex, playedLine, greedyCaptureValidations, tacticalValidations }) {
   const enemySide = side === "w" ? "b" : "w";
 
   let from = null;
@@ -83,6 +83,7 @@ export function extractFeatures({ fenBefore, fenAfter, san, side, previousSan, m
     moveIndex,
     playedLine,
     greedyCaptureValidations: greedyCaptureValidations || [],
+    tacticalValidations: tacticalValidations || [],
 
     enemyHangingBefore,
     enemyHangingAfter,
