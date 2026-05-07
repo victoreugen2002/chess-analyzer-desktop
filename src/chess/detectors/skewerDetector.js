@@ -64,10 +64,13 @@ function findSkewers(chess, attackerColor) {
               front.type === "k" || frontValue > rearValue;
 
             if (frontIsImportant && rearIsWorthMentioning && isRealSkewer) {
+              const frontIsKing = front.type === "k";
+
               skewers.push({
                 attacker: { ...attacker, square: attackerSquare },
                 front,
                 rear: { ...piece, square },
+                strength: frontIsKing ? "xray" : "strong",
               });
             }
 
@@ -102,6 +105,8 @@ function toSignal(skewer) {
     tags: {
       attacker: skewer.attacker.type,
       attackerSquare: skewer.attacker.square,
+      frontIsKing: skewer.front.type === "k",
+      strength: skewer.strength || "strong",
     },
   };
 }

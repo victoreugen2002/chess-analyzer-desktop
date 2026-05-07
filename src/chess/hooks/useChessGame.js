@@ -1,6 +1,37 @@
 import { useState, useMemo } from "react";
 import { Chess } from "chess.js";
-import { buildMoveObjectsFromPgn } from "../pgn/pgnParser";
+import {
+  buildMoveObjectsFromFen,
+  buildMoveObjectsFromPgn,
+} from "../pgn/pgnParser";
+
+function setFenHeaders(chess, fen) {
+  if (typeof chess.header === "function") {
+    chess.header("SetUp", "1", "FEN", fen);
+  }
+
+  if (typeof chess.setHeader === "function") {
+    chess.setHeader("SetUp", "1");
+    chess.setHeader("FEN", fen);
+  }
+}
+
+function syncChessToGameData(chess, built) {
+  try {
+    chess.load(built.initialFen);
+  } catch (error) {
+    console.warn("Could not load initial FEN, resetting board:", error);
+    chess.reset();
+  }
+
+  if (built.initialFen && built.initialFen !== new Chess().fen()) {
+    setFenHeaders(chess, built.initialFen);
+  }
+
+  built.moves.forEach((m) => {
+    chess.move(m.san, { sloppy: true });
+  });
+}
 
 export function useChessGame(initialPgn) {
   const [chess] = useState(() => new Chess());
@@ -23,11 +54,20 @@ export function useChessGame(initialPgn) {
   function importPgn() {
     const built = buildMoveObjectsFromPgn(pgn);
 
-    chess.reset();
-    built.moves.forEach((m) => {
-      chess.move(m.san, { sloppy: true });
-    });
+    syncChessToGameData(chess, built);
 
+    setGameData(built);
+    setSelectedPly(0);
+    setSelectedSquare(null);
+  }
+
+  function loadFenForTest(fen) {
+    const built = buildMoveObjectsFromFen(fen);
+    const normalizedFen = built.initialFen;
+
+    syncChessToGameData(chess, built);
+
+    setPgn(`[SetUp "1"]\n[FEN "${normalizedFen}"]\n\n*`);
     setGameData(built);
     setSelectedPly(0);
     setSelectedSquare(null);
@@ -92,6 +132,7 @@ export function useChessGame(initialPgn) {
     setSelectedPly,
     handleSquareClick,
     importPgn,
+    loadFenForTest,
 
     goNext,
     goPrev,

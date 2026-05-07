@@ -72,6 +72,24 @@ function getSignalRule(signal) {
   };
 }
 
+function isSeriousErrorLabel(label) {
+  return ["Mistake", "Blunder"].includes(label);
+}
+
+function getTargetValue(target) {
+  const piece = target?.piece;
+  const pieceType = typeof piece === "object" ? piece.type : piece;
+
+  return target?.value || PIECE_VALUES[pieceType] || 0;
+}
+
+function isLowValueTargetSignal(signal) {
+  return Boolean(
+    signal?.targets?.length &&
+      signal.targets.every((target) => getTargetValue(target) <= 1)
+  );
+}
+
 function isUsableSignal(signal) {
   if (!signal) return false;
 
@@ -108,7 +126,7 @@ function removeDuplicateSignals(signals = []) {
   });
 }
 
-function removeRedundantSignals(signals = []) {
+function removeRedundantSignals(signals = [], context = {}) {
   const types = new Set(signals.map((s) => s.type));
 
   const hasDirectTactic =
@@ -117,6 +135,20 @@ function removeRedundantSignals(signals = []) {
     types.has("discoveredCheck") ||
     types.has("discoveredAttack") ||
     types.has("mateThreat");
+
+  const isCheckingMove =
+    context.isCheckingMove ||
+    types.has("check") ||
+    types.has("discoveredCheck");
+
+  const isReplyToCheck = Boolean(context.wasInCheck);
+  const isSeriousError = Boolean(context.isSeriousError);
+  const hasNonWarningSignal = signals.some(
+    (signal) => getSignalRule(signal).group !== "warning"
+  );
+
+  const isLowValueAttack = (signal) =>
+    signal.type === "attack" && isLowValueTargetSignal(signal);
 
   const attackSquares = signals
     .filter((s) => s.type === "attack")
@@ -152,6 +184,53 @@ function removeRedundantSignals(signals = []) {
   });
 
   return signals.filter((signal) => {
+    if (
+      !isSeriousError &&
+      hasNonWarningSignal &&
+      ["hanging", "enemyPressure", "ignoredAttack"].includes(signal.type) &&
+      isLowValueTargetSignal(signal)
+    ) {
+      return false;
+    }
+
+    if (
+      isCheckingMove &&
+      [
+        "protectsAttackedPiece",
+        "unpin",
+        "pin",
+        "battery",
+        "enemyPressure",
+        "hanging",
+        "ignoredAttack",
+      ].includes(signal.type)
+    ) {
+      return false;
+    }
+
+    if (isCheckingMove && isLowValueAttack(signal)) {
+      return false;
+    }
+
+    if (
+      isReplyToCheck &&
+      [
+        "protectsAttackedPiece",
+        "unpin",
+        "pin",
+        "battery",
+        "enemyPressure",
+        "hanging",
+        "ignoredAttack",
+      ].includes(signal.type)
+    ) {
+      return false;
+    }
+
+    if (isReplyToCheck && isLowValueAttack(signal)) {
+      return false;
+    }
+
     if (signal.type === "greedyCapturePunishment" && hasDirectTactic) {
       return false;
     }
@@ -307,9 +386,10 @@ function sortByPriority(signals = []) {
   );
 }
 
-function selectMessageSignals(detections = []) {
+function selectMessageSignals(detections = [], context = {}) {
   const usable = removeRedundantSignals(
-    removeDuplicateSignals(detections.filter(isUsableSignal))
+    removeDuplicateSignals(detections.filter(isUsableSignal)),
+    context
   );
 
   const sorted = sortByPriority(usable);
@@ -356,12 +436,15 @@ function orderSignalsForMessage(signals = []) {
   });
 }
 
-function sentenceWithContrast(message) {
+function sentenceWithContrast(message, { soft = false } = {}) {
   if (!message) return "";
-    return `However, ${message.charAt(0).toLowerCase()}${message.slice(1)}`;
-  }
 
-function buildCombinedMessage(signals = []) {
+  const lowered = `${message.charAt(0).toLowerCase()}${message.slice(1)}`;
+
+  return soft ? `At the same time, ${lowered}` : `However, ${lowered}`;
+}
+
+function buildCombinedMessage(signals = [], context = {}) {
   const ordered = orderSignalsForMessage(signals);
 
   return ordered
@@ -373,7 +456,9 @@ function buildCombinedMessage(signals = []) {
       const previousGroup = getSignalRule(ordered[index - 1]).group;
 
       if (index > 0 && currentGroup === "warning" && previousGroup !== "warning") {
-        return sentenceWithContrast(message);
+        return sentenceWithContrast(message, {
+          soft: !context.isSeriousError,
+        });
       }
 
       return message;
@@ -570,8 +655,28 @@ export function explainMove({
     }`.trim();
   }
 
-  const messageSignals = selectMessageSignals(detections);
-  const msg = buildCombinedMessage(messageSignals);
+  const isCheckingMove = Boolean(san?.includes("+") || san?.includes("#"));
+  const wasInCheck = (() => {
+    try {
+      return Boolean(fenBefore && new Chess(fenBefore).isCheck());
+    } catch {
+      return false;
+    }
+  })();
+
+  const messageContext = {
+    isCheckingMove,
+    wasInCheck,
+    isSeriousError: isSeriousErrorLabel(label),
+  };
+
+  const messageSignals = selectMessageSignals(detections, messageContext);
+
+  let msg = buildCombinedMessage(messageSignals, messageContext);
+
+  if (wasInCheck && !msg.toLowerCase().includes("check")) {
+    msg = `This gets out of check.${msg ? ` ${msg}` : ""}`;
+  }
 
   const bestText =
     label !== "Good" && bestHuman && bestHuman !== san

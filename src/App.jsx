@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLinePreview } from "./chess/ui/useLinePreview";
 import { analyzeMove } from "./chess/analysis/analyzeMove";
 import { buildGreedyCaptureValidations } from "./chess/analysis/greedyCaptureValidation";
-import { buildMoveObjectsFromPgn } from "./chess/pgn/pgnParser";
+import { buildMoveObjectsFromFen, buildMoveObjectsFromPgn } from "./chess/pgn/pgnParser";
 import { getProgressWidth, getBoardPixelSize } from "./chess/ui/uiHelpers";
 import { createMoveAudio } from "./chess/ui/sounds";
 
@@ -40,6 +40,7 @@ export default function App() {
   const [rightTab, setRightTab] = useState("moves");
   const [showStory, setShowStory] = useState(false);
   const [pgn, setPgn] = useState(START_PGN);
+  const [testFen, setTestFen] = useState("");
   const [gameData, setGameData] = useState(() => buildMoveObjectsFromPgn(START_PGN));
   const [selectedPly, setSelectedPly] = useState(0);
   const [analysis, setAnalysis] = useState([]);
@@ -449,23 +450,81 @@ export default function App() {
     return { white, black };
   }, [analysis]);
 
+  function setFenHeadersForPgn(chessInstance, fen) {
+    if (!fen) return;
+
+    if (typeof chessInstance.header === "function") {
+      chessInstance.header("SetUp", "1", "FEN", fen);
+    }
+
+    if (typeof chessInstance.setHeader === "function") {
+      chessInstance.setHeader("SetUp", "1");
+      chessInstance.setHeader("FEN", fen);
+    }
+  }
+
+  function resetAnalysisState() {
+    resetPreview();
+    setSelectedPly(0);
+    setAnalysis([]);
+    setLiveCoachAnalysis(null);
+    setCoachMessage(null);
+    setWaitingForCoachConfirm(false);
+    setShowPlayAnalysis(false);
+    setFullAnalysisVisible(false);
+    setSelectedSquare(null);
+    setLastMoveSquares(null);
+    setHoveredMove(null);
+    setIsHoveringBestMove(false);
+  }
+
+  function syncChessToGameData(built) {
+    chess.load(built.initialFen || new Chess().fen());
+
+    if (built.initialFen && built.initialFen !== new Chess().fen()) {
+      setFenHeadersForPgn(chess, built.initialFen);
+    }
+
+    built.moves.forEach((m) => {
+      chess.move(m.san, { sloppy: true });
+    });
+  }
+
   function importPgn() {
     try {
-      resetPreview();
       const built = buildMoveObjectsFromPgn(pgn);
 
-      chess.reset();
-      built.moves.forEach(m => {
-        chess.move(m.san, { sloppy: true });
-      });
-
+      syncChessToGameData(built);
       setGameData(built);
-      setSelectedPly(0);
-      setSelectedPly(0);
-      setAnalysis([]);
+      resetAnalysisState();
       setError("");
-    } catch {
+    } catch (error) {
+      console.error("PGN import failed:", error);
       setError("The PGN could not be parsed. Please paste a valid PGN game.");
+    }
+  }
+
+  function loadFenForTest() {
+    try {
+      const fen = testFen.trim();
+
+      if (!fen) {
+        setError("Paste a FEN before loading the test position.");
+        return;
+      }
+
+      const built = buildMoveObjectsFromFen(fen);
+
+      syncChessToGameData(built);
+      setPgn(`[SetUp "1"]\n[FEN "${built.initialFen}"]\n\n*`);
+      setGameData(built);
+      resetAnalysisState();
+      setError("");
+      setMode("review");
+      setStarted(true);
+    } catch (error) {
+      console.error("FEN load failed:", error);
+      setError("The FEN could not be loaded. Please paste a valid FEN position.");
     }
   }
 
@@ -670,6 +729,43 @@ export default function App() {
 
         </div>
         
+
+        {mode === "review" && (
+          <section
+            className="panel"
+            style={{
+              marginBottom: "14px",
+              display: "grid",
+              gap: "10px",
+            }}
+          >
+            <div>
+              <h2 className="panel-title">Dev FEN Loader</h2>
+              <p className="panel-subtitle">
+                Paste a FEN to test artificial tactical positions.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <input
+                type="text"
+                value={testFen}
+                onChange={(event) => setTestFen(event.target.value)}
+                placeholder="Paste FEN for testing"
+                style={{
+                  flex: "1 1 420px",
+                  minWidth: 0,
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                }}
+              />
+              <button type="button" onClick={loadFenForTest}>
+                Load FEN
+              </button>
+            </div>
+          </section>
+        )}
 
         <div className={`main-grid main-grid--${mode}`}>
           {mode === "review" && (

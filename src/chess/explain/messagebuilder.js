@@ -133,6 +133,10 @@ export function buildCoachMessage(signal) {
       const rearName = getPieceName(rear.piece) || "piece";
       const attackerName = getPieceName(signal.tags?.attacker) || "piece";
 
+      if (signal.tags?.frontIsKing || front.piece === "k") {
+        return `This gives check, with the ${rearName} on ${rear.square} lined up behind the king.`;
+      }
+
       return `This creates a skewer with the ${attackerName}: the ${frontName} on ${front.square} is attacked, with the ${rearName} behind it on ${rear.square}.`;
     }
 
