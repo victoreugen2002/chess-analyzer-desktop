@@ -1,5 +1,5 @@
 import { Chess } from "chess.js";
-import { moveToHuman, getAttackedSquaresByPiece } from "../utils";
+import { moveToHuman } from "../utils";
 import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName, PIECE_VALUES } from "../core/pieces";
 
@@ -486,6 +486,10 @@ function buildCombinedMessage(signals = [], context = {}) {
 function shouldShowLabel(label, signals = []) {
   if (!signals.length) return true;
 
+  if (signals.some((signal) => signal.type === "opponentTacticalReply")) {
+    return ["Mistake", "Blunder"].includes(label);
+  }
+
   if (label === "Good") {
     return false;
   }
@@ -503,12 +507,17 @@ function getLabelSentence(label) {
 function playMoveToken(chess, token) {
   if (!token) return null;
 
-  if (/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(token)) {
-    return chess.move({
+  if (/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(token)) {
+    const move = {
       from: token.slice(0, 2),
       to: token.slice(2, 4),
-      promotion: token[4] || "q",
-    });
+    };
+
+    if (token[4]) {
+      move.promotion = token[4];
+    }
+
+    return chess.move(move);
   }
 
   return chess.move(token, { sloppy: true });
@@ -643,63 +652,6 @@ function getPunishingReplyText({ playedLine, fenBefore, fenAfter, san, side }) {
   return `${opponent} can answer with ${reply.san}`;
 }
 
-function formatReplyForkTargets(targets = []) {
-  const names = targets
-    .map((target) => getPieceName(target.piece) || "piece")
-    .filter(Boolean);
-
-  if (!names.length) return "material";
-  if (names.length === 1) return `the ${names[0]}`;
-
-  return `the ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-function getReplyForkText({ playedLine, fenBefore, fenAfter, san, side }) {
-  const correctFenAfter = getFenAfterPlayedMove({
-    fenBefore,
-    fenAfter,
-    san,
-    side,
-  });
-
-  const tokens = getPlayedLineTokens(playedLine);
-  if (!correctFenAfter || !tokens.length) return "";
-
-  for (const token of tokens) {
-    try {
-      const chess = new Chess(correctFenAfter);
-      const reply = playMoveToken(chess, token);
-
-      if (!reply || reply.color === side) continue;
-
-      const movedPiece = chess.get(reply.to);
-      if (!movedPiece) continue;
-
-      const enemyColor = reply.color === "w" ? "b" : "w";
-      const attackedSquares = getAttackedSquaresByPiece(chess, reply.to);
-
-      const targets = attackedSquares
-        .map((square) => ({ square, piece: chess.get(square) }))
-        .filter(({ piece }) => piece?.color === enemyColor && piece.type !== "k")
-        .map(({ square, piece }) => ({
-          piece: piece.type,
-          square,
-          value: PIECE_VALUES[piece.type] || 0,
-        }))
-        .filter((target) => target.piece === "q" || target.piece === "r" || target.value >= 3)
-        .sort((a, b) => b.value - a.value);
-
-      if (targets.length < 2) continue;
-
-      return `but it allows ${reply.san}, forking ${formatReplyForkTargets(targets)}`;
-    } catch {
-      // skip illegal token
-    }
-  }
-
-  return "";
-}
-
 export function explainMove({
   label,
   san,
@@ -747,18 +699,6 @@ export function explainMove({
 
   let msg = buildCombinedMessage(messageSignals, messageContext);
 
-  const replyForkText =
-  ["Mistake", "Blunder"].includes(label) &&
-  !messageSignals.some((signal) => signal.type === "opponentTacticalReply")
-    ? getReplyForkText({
-        playedLine,
-        fenBefore,
-        fenAfter,
-        san,
-        side,
-      })
-    : "";
-
   if (wasInCheck && !msg.toLowerCase().includes("check")) {
     msg = `This gets out of check.${msg ? ` ${msg}` : ""}`;
   }
@@ -786,13 +726,6 @@ export function explainMove({
         return `${opener} ${labelText} because ${punishment}. A better move was ${bestHuman}.`;
       }
     }
-
-  if (replyForkText) {
-    const baseMsg = msg ? msg.replace(/\.$/, "") : "This move is tactically weak";
-    const labelText = getLabelSentence(label);
-
-    return `${opener} ${baseMsg}, ${replyForkText}. ${labelText}${bestText}`.trim();
-  }
 
   if (messageSignals.length && msg) {
     const labelText = shouldShowLabel(label, messageSignals)

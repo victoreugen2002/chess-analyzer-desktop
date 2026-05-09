@@ -11,16 +11,20 @@ function playUci(chess, uci) {
     return null;
   }
 
-  const move = {
-    from: uci.slice(0, 2),
-    to: uci.slice(2, 4),
-  };
+  try {
+    const move = {
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+    };
 
-  if (uci[4]) {
-    move.promotion = uci[4];
+    if (uci[4]) {
+      move.promotion = uci[4];
+    }
+
+    return chess.move(move);
+  } catch {
+    return null;
   }
-
-  return chess.move(move);
 }
 
 function playSan(chess, san) {
@@ -58,19 +62,23 @@ function buildLegalContinuation({ fen, line, maxPlies = 4 }) {
   for (const token of tokens) {
     if (moves.length >= maxPlies) break;
 
-    const fenBefore = chess.fen();
-    const move = playMoveToken(chess, token);
+    try {
+      const fenBefore = chess.fen();
+      const move = playMoveToken(chess, token);
 
-    if (!move) {
+      if (!move) {
+        continue;
+      }
+
+      moves.push({
+        ...move,
+        fenBefore,
+        fenAfter: chess.fen(),
+        token,
+      });
+    } catch {
       continue;
     }
-
-    moves.push({
-      ...move,
-      fenBefore,
-      fenAfter: chess.fen(),
-      token,
-    });
   }
 
   return moves;
@@ -111,30 +119,46 @@ function detectStrongMaterialGain(reply) {
   };
 }
 
+function safeDetect(detector) {
+  try {
+    return detector() || null;
+  } catch {
+    return null;
+  }
+}
+
 function getContinuationTactic({ chessBeforeReply, chessAfterReply, tacticalReply }) {
   const checks = [
-    detectFork({ chessAfter: chessAfterReply, move: tacticalReply }),
-    detectSkewer({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectDiscoveredCheck({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectDiscoveredAttack({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectRemoveDefender({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectStrongMaterialGain(tacticalReply),
+    safeDetect(() => detectFork({ chessAfter: chessAfterReply, move: tacticalReply })),
+    safeDetect(() =>
+      detectSkewer({
+        chessBefore: chessBeforeReply,
+        chessAfter: chessAfterReply,
+        move: tacticalReply,
+      })
+    ),
+    safeDetect(() =>
+      detectDiscoveredCheck({
+        chessBefore: chessBeforeReply,
+        chessAfter: chessAfterReply,
+        move: tacticalReply,
+      })
+    ),
+    safeDetect(() =>
+      detectDiscoveredAttack({
+        chessBefore: chessBeforeReply,
+        chessAfter: chessAfterReply,
+        move: tacticalReply,
+      })
+    ),
+    safeDetect(() =>
+      detectRemoveDefender({
+        chessBefore: chessBeforeReply,
+        chessAfter: chessAfterReply,
+        move: tacticalReply,
+      })
+    ),
+    safeDetect(() => detectStrongMaterialGain(tacticalReply)),
   ].filter(Boolean);
 
   return checks[0] || null;
@@ -237,9 +261,9 @@ async function buildOpponentTacticalReply({ item, analyzeFen, depth }) {
       maxPlies: 3,
     });
 
-    const tacticalReply = continuation[0];
+    const tacticalReply = continuation.find((move) => move.color !== item.side);
 
-    if (!tacticalReply || tacticalReply.color === item.side) return null;
+    if (!tacticalReply) return null;
 
     const chessBeforeReply = new Chess(tacticalReply.fenBefore);
     const chessAfterReply = new Chess(tacticalReply.fenAfter);
@@ -298,21 +322,23 @@ async function buildValidatedSkewer({ item, analyzeFen, depth }) {
     if (!rear?.square) return null;
 
     const engineLine = await getEngineLineAfterPlayedMove({ item, analyzeFen, depth });
-    let tokens = getLineTokens(engineLine?.pv);
+    const continuation = buildLegalContinuation({
+      fen: item.fenAfter,
+      line: engineLine?.pv || engineLine?.bestMove,
+      maxPlies: 3,
+    });
 
-    if (!tokens.length && engineLine?.bestMove) {
-      tokens = [engineLine.bestMove];
-    }
+    const opponentReply = continuation.find((move) => move.color !== item.side);
+    if (!opponentReply) return null;
 
-    const lineChess = new Chess(item.fenAfter);
-    const opponentReply = playUci(lineChess, tokens[0]);
-    if (!opponentReply || opponentReply.color === item.side) return null;
-
-    let winningMove = playUci(lineChess, tokens[1]);
+    let winningMove = continuation.find(
+      (move) => move.color === item.side && move.captured && move.to === rear.square
+    );
 
     if (!winningMove && typeof analyzeFen === "function") {
-      const followUp = await analyzeFen(lineChess.fen(), depth);
-      winningMove = playUci(lineChess, followUp?.bestMove);
+      const replyPosition = new Chess(opponentReply.fenAfter);
+      const followUp = await analyzeFen(replyPosition.fen(), depth);
+      winningMove = playMoveToken(replyPosition, followUp?.bestMove);
     }
 
     if (!winningMove || winningMove.color !== item.side) return null;
