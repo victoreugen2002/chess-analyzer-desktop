@@ -1,40 +1,6 @@
 import { Chess } from "chess.js";
-import { PIECE_VALUES } from "../core/pieces";
-import { detectDiscoveredAttack, detectDiscoveredCheck } from "./discoveredAttack";
-import { detectFork } from "./forkDetector";
-import { detectRemoveDefender } from "./removeDefender";
-import { detectSkewer } from "./skewerDetector";
-
-function playMoveToken(chess, token) {
-  if (!chess || !token) return null;
-
-  const clean = String(token).trim();
-
-  if (/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(clean)) {
-    return chess.move({
-      from: clean.slice(0, 2),
-      to: clean.slice(2, 4),
-      promotion: clean[4] || "q",
-    });
-  }
-
-  return chess.move(clean, { sloppy: true });
-}
-
-function getLineTokens(line) {
-  if (!line) return [];
-
-  if (Array.isArray(line)) {
-    return line.filter(Boolean);
-  }
-
-  return String(line)
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter(Boolean)
-    .filter((token) => !/^\d+\.{1,3}$/.test(token))
-    .filter((token) => !["1-0", "0-1", "1/2-1/2", "*"].includes(token));
-}
+import { getLineTokens, playMoveToken } from "../analysis/engineLine";
+import { getContinuationTactic, getMotifText } from "../analysis/continuationTactics";
 
 function getMoveToken(moveData) {
   return moveData?.lan || moveData?.uci || moveData?.san || null;
@@ -99,8 +65,6 @@ function buildLineSequence({ chessAfter, move, playedLine }) {
         continue;
       }
 
-      // Engine lines sometimes include the already-played move or illegal noise.
-      // Skip illegal tokens until we find the opponent's immediate response.
       if (!nextMove) continue;
 
       chess.load(test.fen());
@@ -131,72 +95,6 @@ function buildLineSequence({ chessAfter, move, playedLine }) {
     };
   } catch {
     return null;
-  }
-}
-
-function detectStrongMaterialGain(reply) {
-  if (!reply?.captured) return null;
-
-  const value = PIECE_VALUES[reply.captured] || 0;
-  if (value < 3) return null;
-
-  return {
-    type: "materialGain",
-    targets: [
-      {
-        piece: reply.captured,
-        square: reply.to,
-        value,
-      },
-    ],
-  };
-}
-
-function getContinuationTactic({ chessBeforeReply, chessAfterReply, tacticalReply }) {
-  const checks = [
-    detectFork({ chessAfter: chessAfterReply, move: tacticalReply }),
-    detectSkewer({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectDiscoveredCheck({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectDiscoveredAttack({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectRemoveDefender({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectStrongMaterialGain(tacticalReply),
-  ].filter(Boolean);
-
-  return checks[0] || null;
-}
-
-function getMotifText(type) {
-  switch (type) {
-    case "fork":
-      return "with a fork";
-    case "skewer":
-      return "with a skewer";
-    case "discoveredCheck":
-      return "with a discovered check";
-    case "discoveredAttack":
-      return "with a discovered attack";
-    case "removeDefender":
-      return "by removing a defender";
-    case "materialGain":
-      return "winning material";
-    default:
-      return "with a tactical continuation";
   }
 }
 
@@ -234,7 +132,7 @@ export function detectTacticalSequence({
       recapturingSide: sideName(sequence.opponentResponse.color),
       punishingSide: sideName(move.color),
       motif: tactic.type,
-      motifText: getMotifText(tactic.type),
+      motifText: getMotifText(tactic),
       source: sequence.source,
       replySignal: tactic,
     },

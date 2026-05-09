@@ -1,4 +1,5 @@
 import { Chess } from "chess.js";
+import { getLineTokens, playMoveToken } from "../analysis/engineLine";
 import { moveToHuman } from "../utils";
 import { buildCoachMessage } from "./messagebuilder";
 import { getPieceName, PIECE_VALUES } from "../core/pieces";
@@ -504,24 +505,7 @@ function getLabelSentence(label) {
   return "This is a natural move.";
 }
 
-function playMoveToken(chess, token) {
-  if (!token) return null;
 
-  if (/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(token)) {
-    const move = {
-      from: token.slice(0, 2),
-      to: token.slice(2, 4),
-    };
-
-    if (token[4]) {
-      move.promotion = token[4];
-    }
-
-    return chess.move(move);
-  }
-
-  return chess.move(token, { sloppy: true });
-}
 
 function getBestMoveIdea(bestMove, fenBefore) {
   if (!bestMove || bestMove === "—") return "";
@@ -561,20 +545,6 @@ function getBestMoveIdea(bestMove, fenBefore) {
   }
 }
 
-function getPlayedLineTokens(playedLine) {
-  if (!playedLine) return [];
-
-  if (Array.isArray(playedLine)) {
-    return playedLine.filter(Boolean);
-  }
-
-  return String(playedLine)
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter(Boolean)
-    .filter((token) => !/^\d+\.{1,3}$/.test(token))
-    .filter((token) => !["1-0", "0-1", "1/2-1/2", "*"].includes(token));
-}
 
 function getFenAfterPlayedMove({ fenBefore, fenAfter, san, side }) {
   try {
@@ -605,7 +575,7 @@ function getFirstLegalReplyFromLine({ playedLine, fenBefore, fenAfter, san, side
     side,
   });
 
-  const tokens = getPlayedLineTokens(playedLine);
+  const tokens = getLineTokens(playedLine);
 
   if (!correctFenAfter || !tokens.length) return null;
 
