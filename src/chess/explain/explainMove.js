@@ -68,6 +68,24 @@ const SUPPRESS_LABEL_TYPES = [
   // "capture",
 ];
 
+export function createSignalMessageContext({ san, fenBefore, label } = {}) {
+  const isCheckingMove = Boolean(san?.includes("+") || san?.includes("#"));
+
+  const wasInCheck = (() => {
+    try {
+      return Boolean(fenBefore && new Chess(fenBefore).isCheck());
+    } catch {
+      return false;
+    }
+  })();
+
+  return {
+    isCheckingMove,
+    wasInCheck,
+    isSeriousError: isSeriousErrorLabel(label),
+  };
+}
+
 function getSignalRule(signal) {
   return SIGNAL_RULES[signal?.type] || {
     priority: 0,
@@ -132,7 +150,7 @@ function removeDuplicateSignals(signals = []) {
 }
 
 function removeRedundantSignals(signals = [], context = {}) {
-  const types = new Set(signals.map((s) => s.type));
+  let types = new Set(signals.map((s) => s.type));
 
   const hasDirectTactic =
     types.has("fork") ||
@@ -147,6 +165,25 @@ function removeRedundantSignals(signals = [], context = {}) {
     types.has("check") ||
     types.has("discoveredCheck");
 
+  signals = signals.filter((signal) => {
+    if (
+      signal.type === "removeDefender" &&
+      !signals.some((s) =>
+        [
+          "materialGain",
+          "fork",
+          "skewer",
+          "validatedSkewer",
+          "mateThreat",
+        ].includes(s.type)
+      )
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+  types = new Set(signals.map((s) => s.type));
   const isReplyToCheck = Boolean(context.wasInCheck);
   const isSeriousError = Boolean(context.isSeriousError);
   const hasNonWarningSignal = signals.some(
@@ -180,6 +217,14 @@ function removeRedundantSignals(signals = [], context = {}) {
     .filter((s) => s.type === "removeDefender")
     .flatMap((s) => s.targets?.map((t) => t.square) || []);
 
+  const hasRemoveDefender = types.has("removeDefender");
+
+  const hasImportantRemoveDefender = signals.some(
+    (s) =>
+      s.type === "removeDefender" &&
+      s.targets?.some((t) => t.piece !== "p")
+  );
+
   const hasMajorRecapture = captureSignals.some((s) => {
     if (s.type !== "recapture") return false;
 
@@ -189,8 +234,126 @@ function removeRedundantSignals(signals = [], context = {}) {
     return value >= 3;
   });
 
+  if (!isSeriousError) {
+    signals = signals.filter(
+      (signal) =>
+        ![
+          "tacticalContinuation",
+          "tacticalSequence",
+          "opponentTacticalReply",
+          "materialLoss",
+        ].includes(signal.type)
+    );
+
+    types = new Set(signals.map((s) => s.type));
+  }
+
   return signals.filter((signal) => {
+    if (["pin", "unpin"].includes(signal.type)) {
+      const target = signal.targets?.[0];
+
+      const pinnedPiece =
+        target?.piece?.type ||
+        target?.piece ||
+        target?.type ||
+        signal.tags?.pinnedPiece ||
+        signal.tags?.pinnedType ||
+        signal.tags?.pinned?.type ||
+        signal.pinned?.type;
+
+      const normalizedPinnedPiece =
+        pinnedPiece === "pawn" ? "p" : pinnedPiece;
+
+      const hasTacticalPayoff =
+        types.has("materialGain") ||
+        types.has("mateThreat") ||
+        types.has("fork") ||
+        types.has("validatedSkewer") ||
+        types.has("skewer") ||
+        types.has("tacticalContinuation") ||
+        types.has("tacticalSequence") ||
+        types.has("opponentTacticalReply");
+
+      if (normalizedPinnedPiece === "p" && !hasTacticalPayoff) {
+        return false;
+      }
+    }
+
+    if (
+      signal.type === "enemyPressure" &&
+      types.has("moveToSafety") &&
+      !types.has("materialGain")
+    ) {
+      return false;
+    }
+    if (signal.type === "pin") {
+      const targetPiece = signal.tags?.targetPiece;
+
+      const hasTacticalPayoff =
+        types.has("materialGain") ||
+        types.has("fork") ||
+        types.has("validatedSkewer") ||
+        types.has("skewer") ||
+        types.has("tacticalContinuation") ||
+        types.has("tacticalSequence") ||
+        types.has("mateThreat");
+
+      const isAbsolutePin = targetPiece === "k";
+      const isQueenPin = targetPiece === "q";
+
+      if (!isAbsolutePin && !isQueenPin && !hasTacticalPayoff) {
+        return false;
+      }
+    }
+    if (signal.type === "discoveredAttack") {
+      const target = signal.targets?.[0];
+
+      const attackerPiece =
+        signal.tags?.attacker?.piece ||
+        signal.tags?.attacker?.type ||
+        signal.tags?.attacker ||
+        signal.attacker?.piece ||
+        signal.attacker?.type ||
+        signal.attacker;
+
+      const targetValue =
+        target?.value || PIECE_VALUES[target?.piece] || 0;
+
+      const attackerValue =
+        PIECE_VALUES[attackerPiece] || 0;
+
+      if (!attackerValue || targetValue <= attackerValue) {
+        return false;
+      }
+    }
+
+    if (
+      signal.type === "enemyPressure" &&
+      signals.some(
+        (s) =>
+          s.type === "attack" &&
+          s.targets?.some(
+            (t) => t.square === signal.targets?.[0]?.square
+          )
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      types.has("discoveredAttack") &&
+      ["hanging", "enemyPressure"].includes(signal.type)
+    ) {
+      return false;
+    }
     if (types.has("validatedSkewer") && signal.type === "skewer") {
+      return false;
+    }
+    if (
+      signal.type === "pin" &&
+      hasRemoveDefender &&
+      signal.targets?.every((t) => t.piece === "p")
+    ) {
       return false;
     }
 
@@ -199,9 +362,8 @@ function removeRedundantSignals(signals = [], context = {}) {
     }
 
     if (
-      !isSeriousError &&
-      hasNonWarningSignal &&
-      ["hanging", "enemyPressure", "ignoredAttack"].includes(signal.type) &&
+    !isSeriousError &&
+    ["hanging", "enemyPressure", "ignoredAttack"].includes(signal.type) &&
       isLowValueTargetSignal(signal)
     ) {
       return false;
@@ -373,25 +535,58 @@ function removeRedundantSignals(signals = [], context = {}) {
       return false;
     }
 
-    if (signal.type === "hanging") {
+    if (
+      signal.type === "hanging" &&
+      signals.some(
+        (s) =>
+          s.type === "attack" &&
+          s.targets?.some(
+            (t) => t.square === signal.targets?.[0]?.square
+          )
+      )
+    ) {
       const target = signal.targets?.[0];
+      const value = target?.value || PIECE_VALUES[target?.piece] || 0;
 
-      const isEqualCaptureTrade = captureSignals.some((captureSignal) => {
-        const captured = captureSignal.targets?.[0];
+  // Don't call equal-value attacked pieces "undefended"
+    const equalOrLowerAttackExists = signals.some((s) => {
+    if (s.type !== "attack") return false;
 
-        if (!captured || !target) return false;
-        if (captured.square !== target.square) return false;
+    const attacker = s.tags?.attacker;
+    const attackerValue = PIECE_VALUES[attacker] || 0;
 
-        const capturedValue = PIECE_VALUES[captured.piece] || 0;
-        const hangingValue = target.value || PIECE_VALUES[target.piece] || 0;
+    return attackerValue <= value;
+  });
 
-        return capturedValue >= hangingValue;
-      });
-
-      if (isEqualCaptureTrade) {
-        return false;
-      }
+    if (equalOrLowerAttackExists) {
+      return false;
     }
+  }
+  if (
+    signal.type === "hanging" &&
+    (types.has("moveToSafety") || types.has("attack"))
+  ) {
+    return false;
+  }
+  if (signal.type === "hanging") {
+    const target = signal.targets?.[0];
+
+    const isEqualCaptureTrade = captureSignals.some((captureSignal) => {
+      const captured = captureSignal.targets?.[0];
+
+      if (!captured || !target) return false;
+      if (captured.square !== target.square) return false;
+
+      const capturedValue = PIECE_VALUES[captured.piece] || 0;
+      const hangingValue = target.value || PIECE_VALUES[target.piece] || 0;
+
+      return capturedValue >= hangingValue;
+    });
+
+    if (isEqualCaptureTrade) {
+      return false;
+    }
+  }
 
     return true;
   });
@@ -403,7 +598,7 @@ function sortByPriority(signals = []) {
   );
 }
 
-function selectMessageSignals(detections = [], context = {}) {
+export function selectMessageSignals(detections = [], context = {}) {
   const usable = removeRedundantSignals(
     removeDuplicateSignals(detections.filter(isUsableSignal)),
     context
@@ -619,7 +814,7 @@ function getPunishingReplyText({ playedLine, fenBefore, fenAfter, san, side }) {
     return `${opponent} can answer with ${reply.san}, giving check`;
   }
 
-  return `${opponent} can answer with ${reply.san}`;
+  return "";
 }
 
 export function explainMove({
@@ -650,20 +845,13 @@ export function explainMove({
     }`.trim();
   }
 
-  const isCheckingMove = Boolean(san?.includes("+") || san?.includes("#"));
-  const wasInCheck = (() => {
-    try {
-      return Boolean(fenBefore && new Chess(fenBefore).isCheck());
-    } catch {
-      return false;
-    }
-  })();
+  const messageContext = createSignalMessageContext({
+    san,
+    fenBefore,
+    label,
+  });
 
-  const messageContext = {
-    isCheckingMove,
-    wasInCheck,
-    isSeriousError: isSeriousErrorLabel(label),
-  };
+  const { wasInCheck } = messageContext;
 
   const messageSignals = selectMessageSignals(detections, messageContext);
 

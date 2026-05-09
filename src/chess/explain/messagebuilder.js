@@ -1,5 +1,5 @@
 import { getPieceName } from "../core/pieces";
-
+import { PIECE_VALUES } from "../core/pieces";
 function formatTarget(t) {
   const name = t.name || getPieceName(t.piece?.type || t.piece) || "piece";
   return `the ${name}${t.square ? ` on ${t.square}` : ""}`;
@@ -28,7 +28,11 @@ export function buildCoachMessage(signal) {
         return "This gives check to the king.";
 
       case "castle":
-        return "This castles the king to safety.";
+        return signal.tags?.side === "queenside"
+          ? "This castles queenside."
+          : signal.tags?.side === "kingside"
+            ? "This castles kingside."
+            : "This castles the king.";
 
       case "recapture": {
         const target = signal.targets?.[0];
@@ -69,10 +73,15 @@ export function buildCoachMessage(signal) {
       const punishingSide = signal.tags?.punishingSide || "the player";
       const replySan = signal.tags?.tacticalReplySan;
       const motifText = signal.tags?.motifText || "with a tactical response";
+      const recapturePunishmentText =
+        signal.tags?.recapturePunishmentText ||
+        signal.tags?.replySignal?.tags?.recapturePunishmentText;
 
       if (!exposedSquare || !greedySan || !replySan) return "";
 
-      return `This move appears to leave the ${exposedName} on ${exposedSquare} undefended, but if ${greedySide} grabs it with ${greedySan}, ${punishingSide} has ${replySan} ${motifText}.`;
+      const base = `This move temporarily leaves the ${exposedName} on ${exposedSquare} undefended, but if ${greedySide} grabs it with ${greedySan}, ${punishingSide} has ${replySan} ${motifText}.`;
+
+      return recapturePunishmentText ? `${base} ${recapturePunishmentText}` : base;
     }
     case "tacticalSequence":
     case "tacticalContinuation": {
@@ -80,10 +89,15 @@ export function buildCoachMessage(signal) {
       const punishingSide = signal.tags?.punishingSide || "the player";
       const replySan = signal.tags?.tacticalReplySan || signal.tags?.replySan;
       const motifText = signal.tags?.motifText || "with a tactical continuation";
+      const recapturePunishmentText =
+        signal.tags?.recapturePunishmentText ||
+        signal.tags?.replySignal?.tags?.recapturePunishmentText;
 
       if (!replySan) return "";
 
-      return `This capture is tactically justified because if ${recapturingSide} recaptures, ${punishingSide} has ${replySan} ${motifText}.`;
+      const base = `This capture leads to tactical complications because if ${recapturingSide} recaptures, ${punishingSide} has ${replySan} ${motifText}.`;
+
+      return recapturePunishmentText ? `${base} ${recapturePunishmentText}` : base;
     }
     case "materialGain": {
       const target = signal.targets?.[0];
@@ -185,7 +199,7 @@ export function buildCoachMessage(signal) {
       const text = signal.targets.map(formatTarget).join(" and ");
 
       if (signal.tags?.kind === "doubleAttack") {
-        return `This creates a double attack, also attacking ${text}.`;
+        return `This creates a double attack, attacking ${text}.`;
       }
 
       if (signal.tags?.includesCheck) {
@@ -198,7 +212,17 @@ export function buildCoachMessage(signal) {
       const target = signal.targets?.[0];
       if (!target) return "";
 
-      const attacker = getPieceName(signal.tags?.attacker) || "piece";
+      const attackerType = signal.tags?.attacker;
+
+      const attackerValue = PIECE_VALUES[attackerType] || 0;
+      const targetValue = PIECE_VALUES[target.piece] || 0;
+
+      // Ignore equal-or-lower value discovered attacks
+      if (targetValue <= attackerValue) {
+        return "";
+      }
+
+      const attacker = getPieceName(attackerType) || "piece";
       const targetName = getPieceName(target.piece) || "piece";
 
       return `This opens a discovered attack from the ${attacker} on the ${targetName} on ${target.square}.`;

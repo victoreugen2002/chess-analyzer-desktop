@@ -1,6 +1,10 @@
 import { extractFeatures } from "./extractFeatures";
 import { runDetectors } from "./runDetectors";
-import { explainMove } from "../explain/explainMove";
+import {
+  createSignalMessageContext,
+  explainMove,
+  selectMessageSignals,
+} from "../explain/explainMove";
 import { getLabelFromEval  } from "../explain/labels";
 
 export function analyzeMove(input) {
@@ -38,14 +42,22 @@ export function analyzeMove(input) {
 
 
   const detections = runDetectors(features);
-  const primary = detections[0] || null;
 
   // 3. LABEL
   const label = getLabelFromEval(loss);
 
+  // 4. PRIMARY SIGNAL
+  const messageContext = createSignalMessageContext({
+    san,
+    fenBefore,
+    label,
+  });
+
+  const messageSignals = selectMessageSignals(detections, messageContext);
+  const primary = messageSignals[0] || null;
 
 
-  // 4. EXPLANATION
+  // 5. EXPLANATION
   const explanation = explainMove({
     label,
     loss,
@@ -66,7 +78,7 @@ export function analyzeMove(input) {
 
 
 
-  // 5. OUTPUT STANDARD
+  // 6. OUTPUT STANDARD
   return {
     ply: input.ply,
     side,
@@ -87,6 +99,7 @@ export function analyzeMove(input) {
 
     label,
     primary,
+    messageSignals,
     detections,
     features,
     explanation,

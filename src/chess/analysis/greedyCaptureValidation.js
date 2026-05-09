@@ -1,10 +1,8 @@
-import { Chess } from "chess.js";
 import { PIECE_VALUES, getPieceName } from "../core/pieces";
-import { detectDiscoveredAttack, detectDiscoveredCheck } from "../detectors/discoveredAttack";
-import { detectFork } from "../detectors/forkDetector";
-import { detectRemoveDefender } from "../detectors/removeDefender";
-import { detectSkewer } from "../detectors/skewerDetector";
+
+import { Chess } from "chess.js";
 import { extractFeatures } from "./extractFeatures";
+import { getContinuationTactic, getMotifText } from "./continuationTactics";
 
 function playUci(chess, uci) {
   if (!chess || !uci || !/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(uci)) {
@@ -22,71 +20,6 @@ function sideName(color) {
   return color === "w" ? "White" : "Black";
 }
 
-function getMotifText(type) {
-  switch (type) {
-    case "fork":
-      return "with a fork";
-    case "skewer":
-      return "with a skewer";
-    case "discoveredCheck":
-      return "with a discovered check";
-    case "discoveredAttack":
-      return "with a discovered attack";
-    case "removeDefender":
-      return "by removing a defender";
-    case "materialGain":
-      return "winning material";
-    default:
-      return "with a tactical response";
-  }
-}
-
-function detectStrongMaterialGain(reply) {
-  if (!reply?.captured) return null;
-
-  const value = PIECE_VALUES[reply.captured] || 0;
-  if (value < 3) return null;
-
-  return {
-    type: "materialGain",
-    targets: [
-      {
-        piece: reply.captured,
-        square: reply.to,
-        value,
-      },
-    ],
-  };
-}
-
-function getContinuationTactic({ chessBeforeReply, chessAfterReply, tacticalReply }) {
-  const checks = [
-    detectFork({ chessAfter: chessAfterReply, move: tacticalReply }),
-    detectSkewer({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectDiscoveredCheck({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectDiscoveredAttack({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectRemoveDefender({
-      chessBefore: chessBeforeReply,
-      chessAfter: chessAfterReply,
-      move: tacticalReply,
-    }),
-    detectStrongMaterialGain(tacticalReply),
-  ].filter(Boolean);
-
-  return checks[0] || null;
-}
 
 function getNewlyHangingMaterial({ fenBefore, fenAfter, san, side, moves, moveIndex }) {
   const features = extractFeatures({
@@ -186,6 +119,19 @@ export async function buildGreedyCaptureValidations({
 
       if (!greedyMove) continue;
 
+      // Ignore normal equal recaptures, e.g. Nxd4 Nxd4
+      const originalChess = new Chess(item.fenBefore);
+      const originalMove = originalChess.move(item.san);
+
+      if (
+        originalMove?.captured &&
+        greedyMove?.captured &&
+        originalMove.piece === greedyMove.captured &&
+        originalMove.captured === greedyMove.piece
+      ) {
+        continue;
+      }
+
       const engineReply = await analyzeFen(afterGreedy.fen(), validationDepth);
       const replyUci = engineReply?.bestMove;
 
@@ -194,6 +140,26 @@ export async function buildGreedyCaptureValidations({
       const chessBeforeReply = new Chess(afterGreedy.fen());
       const chessAfterReply = new Chess(afterGreedy.fen());
       const tacticalReply = playUci(chessAfterReply, replyUci);
+
+      // Ignore normal equal trades / recaptures
+      if (
+        tacticalReply?.captured &&
+        greedyMove?.piece &&
+        tacticalReply.captured === greedyMove.piece
+      ) {
+        const capturedValue =
+          PIECE_VALUES[tacticalReply.captured] || 0;
+
+        const greedyPieceValue =
+          PIECE_VALUES[greedyMove.piece] || 0;
+
+        const isEqualTrade =
+          Math.abs(capturedValue - greedyPieceValue) <= 1;
+
+        if (isEqualTrade) {
+          continue;
+        }
+      }
 
       if (!tacticalReply || tacticalReply.color !== item.side) continue;
 
@@ -204,6 +170,18 @@ export async function buildGreedyCaptureValidations({
       });
 
       if (!tactic) continue;
+
+      const tacticValue = Math.max(
+        ...(tactic.targets || []).map((t) => t.value || PIECE_VALUES[t.piece] || 0),
+        0
+      );
+
+      const candidateExposedValue =
+        candidate.exposed?.value || PIECE_VALUES[candidate.exposed?.type] || 0;
+
+      if (tactic.type === "attack" && tacticValue <= candidateExposedValue) {
+        continue;
+      }
 
       const exposed = candidate.exposed || {};
       const exposedPiece = exposed.type || greedyMove.captured;
@@ -230,7 +208,7 @@ export async function buildGreedyCaptureValidations({
           greedySide: sideName(greedyMove.color),
           punishingSide: sideName(tacticalReply.color),
           motif: tactic.type,
-          motifText: getMotifText(tactic.type),
+          motifText: getMotifText(tactic),
           engineBestMove: replyUci,
           enginePv: engineReply?.pv || null,
           replySignal: tactic,

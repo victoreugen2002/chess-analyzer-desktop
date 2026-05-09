@@ -54,6 +54,7 @@ function toSignal(pin, type = "pin") {
       attackerSquare: pin.attacker.square,
       targetPiece: pin.target.type,
       targetSquare: pin.target.square,
+      pinnedPiece: pin.pinned.type,
     },
   };
 }

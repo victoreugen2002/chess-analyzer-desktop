@@ -184,7 +184,9 @@ export function detectDiscoveredAttack({ chessBefore, chessAfter, move } = {}) {
         const attackerValue = PIECE_VALUES[attackerAfter.type] || 0;
         const isDefended = isSquareDefended(chessAfter, square, enemyColor);
 
-        if (target.type === "q" || targetValue > attackerValue || !isDefended) {
+        const isMateriallyProfitable = targetValue > attackerValue;
+
+        if (isMateriallyProfitable) {
           candidates.push({
             attacker: attackerAfter,
             attackerSquare,
@@ -192,6 +194,9 @@ export function detectDiscoveredAttack({ chessBefore, chessAfter, move } = {}) {
             targetSquare: square,
             targetValue,
             isDefended,
+            tags: {
+              attacker: attackerAfter?.type || attackerAfter,
+            },
           });
         }
 

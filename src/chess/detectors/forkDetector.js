@@ -60,6 +60,21 @@ export function detectFork({ chessAfter, move } = {}) {
 
     if (!isImportant) continue;
 
+    const targetAttacksAttacker = getAttackedSquaresByPiece(
+      chessAfter,
+      square
+    ).includes(move.to);
+
+    // Example: knight attacks rook + knight, but the enemy knight can capture it back.
+    // Don't count equal-value reciprocal attacks as real fork targets.
+    if (
+      targetAttacksAttacker &&
+      value <= attackerValue &&
+      !directlyChecksKing
+    ) {
+      continue;
+    }
+
     targets.push({
       piece: target.type,
       square,

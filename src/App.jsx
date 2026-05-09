@@ -1,13 +1,15 @@
 import { Chess } from "chess.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  selectMessageSignals,
+  createSignalMessageContext,
+} from "./chess/explain/explainMove"; 
 import { useLinePreview } from "./chess/ui/useLinePreview";
-import { analyzeMove } from "./chess/analysis/analyzeMove";
-import { buildGreedyCaptureValidations } from "./chess/analysis/greedyCaptureValidation";
-import { buildTacticalValidations } from "./chess/analysis/tacticalValidation";
+import { buildAnalyzedMove } from "./chess/analysis/buildAnalyzedMove";
 import { buildMoveObjectsFromFen, buildMoveObjectsFromPgn } from "./chess/pgn/pgnParser";
 import { getProgressWidth, getBoardPixelSize } from "./chess/ui/uiHelpers";
 import { createMoveAudio } from "./chess/ui/sounds";
-
+import { buildGameAnalysis } from "./chess/analysis/buildGameAnalysis";
 import GameStatsCards from "./components/GameStatsCards";
 import { formatEval } from "./chess/explain/evalFormat";
 import { getAdvantageSide } from "./chess/explain/labels";
@@ -131,6 +133,7 @@ export default function App() {
 
   function handleSquareClick(square) {
     if (isEngineThinking) return;
+
     const piece = chess.get(square);
 
     if (!selectedSquare && !piece) return;
@@ -147,41 +150,10 @@ export default function App() {
 
     if (!selectedSquare) return;
 
-    let move = null;
+    const from = selectedSquare;
 
-    try {
-      move = chess.move({
-        from: selectedSquare,
-        to: square,
-        promotion: "q",
-      });
-    } catch {
-      move = null;
-    }
-
-    if (move) {
-      setSelectedSquare(null);
-      sounds.playFromSan(move.san);
-
-      setLastMoveSquares({
-        from: move.from,
-        to: move.to,
-      });
-
-      const newPgn = chess.pgn();
-      const built = buildMoveObjectsFromPgn(newPgn);
-
-      setPgn(newPgn);
-      setGameData(built);
-      setSelectedPly(chess.history().length);
-      setFullAnalysisVisible(false); 
-      if (coachEnabled) {
-        setShowPlayAnalysis(true);
-        runAnalysis(built);
-      }
-    } else {
-      setSelectedSquare(null);
-    }
+    setSelectedSquare(null);
+    handleMove(from, square);
   }
 
   function buildMove(from, to, promotion) {
@@ -275,45 +247,24 @@ export default function App() {
             ? 0
             : before.normalizedScore - after.normalizedScore;
 
-        const moveAnalysisItem = {
-          fenBefore: previousFen,
-          fenAfter: chess.fen(),
-          san: move.san,
-          side: move.color,
-          loss,
-          playedLine: after?.pv || null,
-        };
-
-        const greedyCaptureValidations = await buildGreedyCaptureValidations({
-          item: moveAnalysisItem,
+        const lastMoveAnalysis = await buildAnalyzedMove({
+          item: {
+            ply: history.length,
+            fenBefore: previousFen,
+            fenAfter: chess.fen(),
+            san: move.san,
+            side: move.color,
+            bestMove: before.bestMove,
+            bestEval: before.normalizedScore,
+            playedEval: after.normalizedScore,
+            loss,
+            playedLine: after?.pv || move.lan,
+            lan: move.lan,
+          },
           moves: history,
           moveIndex: history.length - 1,
           analyzeFen: window.engineApi.analyzeFen,
-          depth: Math.min(depth, 10),
-        });
-
-        const tacticalValidations = await buildTacticalValidations({
-          item: moveAnalysisItem,
-          analyzeFen: window.engineApi.analyzeFen,
-          depth: Math.min(depth, 10),
-        });
-
-        const lastMoveAnalysis = analyzeMove({
-          ply: history.length,
-          fenBefore: previousFen,
-          fenAfter: chess.fen(),
-          san: move.san,
-          side: move.color,
-          bestMove: before.bestMove,
-          bestEval: before.normalizedScore,
-          playedEval: after.normalizedScore,
-          loss,
-          moves: history,
-          moveIndex: history.length - 1,
-          playedLine: after?.pv || move.lan,
-          lan: move.lan,
-          greedyCaptureValidations,
-          tacticalValidations,
+          depth,
         });
 
         setLiveCoachAnalysis(lastMoveAnalysis);
@@ -343,10 +294,10 @@ export default function App() {
         console.log("COACH MESSAGE SET TO:", lastMoveAnalysis.explanation);
 
         setShowPlayAnalysis(true);
+
         if (shouldShowCoachMessage) {
           return;
         }
-        
       } catch (error) {
         console.error("Live coach analysis failed:", error);
         setCoachMessage(null);
@@ -539,65 +490,38 @@ export default function App() {
     }
   }
 
-  async function runAnalysis(customGameData = gameData) {
-    try {
-      resetPreview();
-      setError("");
-      setIsAnalyzing(true);
+async function runAnalysis(customGameData = gameData) {
+  try {
+    resetPreview();
+    setError("");
+    setIsAnalyzing(true);
 
-      if (!window.engineApi?.analyzeGame) {
-        throw new Error("Engine API not available");
+    const results = await buildGameAnalysis({
+      moves: customGameData.moves,
+      depth,
+      engineApi: window.engineApi,
+    });
+
+    setAnalysis(results);
+
+    if (coachEnabled) {
+      const lastResult = results[results.length - 1];
+
+      if (
+        lastResult &&
+        ["Blunder", "Mistake", "Inaccuracy"].includes(lastResult.label)
+      ) {
+        setCoachMessage(lastResult.explanation);
+      } else {
+        setCoachMessage(null);
       }
-
-      const raw = await window.engineApi.analyzeGame(customGameData.moves, depth);
-
-      const results = [];
-
-      for (let index = 0; index < raw.length; index++) {
-        const item = raw[index];
-        const greedyCaptureValidations = await buildGreedyCaptureValidations({
-          item,
-          moves: customGameData.moves,
-          moveIndex: index,
-          analyzeFen: window.engineApi.analyzeFen,
-          depth: Math.min(depth, 10),
-        });
-
-        const tacticalValidations = await buildTacticalValidations({
-          item,
-          analyzeFen: window.engineApi.analyzeFen,
-          depth: Math.min(depth, 10),
-        });
-
-        results.push(
-          analyzeMove({
-            ...item,
-            moves: customGameData.moves,
-            moveIndex: index,
-            greedyCaptureValidations,
-            tacticalValidations,
-          })
-        );
-      }
-      setAnalysis(results);
-      if (coachEnabled) {
-        const lastResult = results[results.length - 1];
-
-        if (
-          lastResult &&
-          ["Blunder", "Mistake", "Inaccuracy"].includes(lastResult.label)
-        ) {
-          setCoachMessage(lastResult.explanation);
-        } else {
-          setCoachMessage(null);
-        }
-      }
-    } catch (err) {
-      setError(err?.message || "Analysis failed...");
-    } finally {
-      setIsAnalyzing(false);
     }
+  } catch (err) {
+    setError(err?.message || "Analysis failed...");
+  } finally {
+    setIsAnalyzing(false);
   }
+}
 
   const highlights = {};
 
@@ -610,8 +534,19 @@ export default function App() {
       ["Blunder", "Mistake", "Inaccuracy"].includes(currentAnalysis?.label));
 
   if (shouldShowAnalysisHighlights && currentAnalysis) {
-    const primary = currentAnalysis?.primary;
-    const detections = currentAnalysis?.detections || [];
+    const rawDetections = currentAnalysis?.detections || [];
+
+    const visibleSignals = selectMessageSignals(
+      rawDetections,
+      createSignalMessageContext({
+        san: currentAnalysis?.san,
+        fenBefore: currentAnalysis?.fenBefore,
+        label: currentAnalysis?.label,
+      })
+    );
+
+    const primary = visibleSignals[0];
+    const detections = visibleSignals;
     const lan = currentAnalysis?.lan;
     const from = lan?.slice(0, 2);
     const to = lan?.slice(2, 4);
