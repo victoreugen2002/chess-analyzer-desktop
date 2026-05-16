@@ -7,6 +7,7 @@ import { getPieceName, PIECE_VALUES } from "../core/pieces";
 
 const SIGNAL_RULES = {
   // Critical / game-changing
+  continuationMaterialLoss: { priority: 105, group: "critical", combinable: false, allowExtras: false },
   opponentTacticalReply: { priority: 104, group: "critical", combinable: false, allowExtras: false },
   validatedSkewer: { priority: 103, group: "tactical", combinable: false, allowExtras: true },
   tacticalSequence: { priority: 102, group: "tactical", combinable: false, allowExtras: true },
@@ -110,6 +111,144 @@ function isLowValueTargetSignal(signal) {
   return Boolean(
     signal?.targets?.length &&
       signal.targets.every((target) => getTargetValue(target) <= 1)
+  );
+}
+
+
+const PAYOFF_SIGNAL_TYPES = new Set([
+  "continuationMaterialLoss",
+  "opponentTacticalReply",
+  "greedyCapturePunishment",
+  "tacticalSequence",
+  "tacticalContinuation",
+  "materialGain",
+  "materialLoss",
+  "mateThreat",
+]);
+
+function normalizePieceType(piece) {
+  if (!piece) return "";
+  if (typeof piece === "object") return piece.type || "";
+  if (piece === "pawn") return "p";
+  if (piece === "knight") return "n";
+  if (piece === "bishop") return "b";
+  if (piece === "rook") return "r";
+  if (piece === "queen") return "q";
+  if (piece === "king") return "k";
+  return piece;
+}
+
+function hasPayoffSignal(signals = []) {
+  return signals.some((signal) => PAYOFF_SIGNAL_TYPES.has(signal?.type));
+}
+
+function isRealAttackTarget(target = {}, signal = {}, context = {}) {
+  const piece = normalizePieceType(target.piece || target.type);
+  const targetValue = getTargetValue(target);
+  const attackerValue =
+    target.attackerValue ||
+    signal.tags?.attackerValue ||
+    PIECE_VALUES[normalizePieceType(target.attacker || signal.tags?.attacker)] ||
+    0;
+  const attackers = Number(target.attackers || 0);
+  const defenders = Number(target.defenders || 0);
+  const isDefended = target.isDefended === true || defenders > 0;
+  const isUndefended = target.isDefended === false || (!isDefended && defenders === 0);
+  const attackersOutnumberDefenders = attackers > defenders;
+  const isMajorTarget = ["q", "r"].includes(piece);
+  const favorableCapture = attackerValue > 0 && targetValue > attackerValue;
+
+  if (!piece || piece === "k") return false;
+
+  if (piece === "p") {
+    return attackersOutnumberDefenders || (isUndefended && (!attackerValue || attackerValue <= 1));
+  }
+
+  // Queen/rook attacks are usually useful tempi even when the piece is defended.
+  if (isMajorTarget) return true;
+
+  // Minor-piece attacks should be mentioned only when they are real threats,
+  // not just geometric pressure like "bishop attacks a defended knight".
+  return isUndefended || attackersOutnumberDefenders || favorableCapture || Boolean(context.isSeriousError && targetValue >= 3 && attackersOutnumberDefenders);
+}
+
+function normalizeAttackSignal(signal, context = {}) {
+  if (signal?.type !== "attack") return signal;
+
+  const targets = (signal.targets || []).filter((target) =>
+    isRealAttackTarget(target, signal, context)
+  );
+
+  if (!targets.length) return null;
+
+  return {
+    ...signal,
+    targets,
+  };
+}
+
+function isWeakGeometricSignal(signal, signals = [], context = {}) {
+  if (!signal) return true;
+
+  const types = new Set(signals.map((s) => s.type));
+  const hasPayoff = hasPayoffSignal(signals);
+
+  if (signal.type === "attack") {
+    return !normalizeAttackSignal(signal, context);
+  }
+
+  if (signal.type === "skewer") {
+    const front = signal.targets?.[0];
+    const rear = signal.targets?.[1];
+    const frontIsKing = signal.tags?.frontIsKing || front?.piece === "k";
+
+    if (frontIsKing) return false;
+
+    // If the rear piece is defended and there is no material/tactical payoff,
+    // this is only a line-up, not a skewer worth saying out loud.
+    if (signal.tags?.rearIsDefended && !hasPayoff) return true;
+    if (rear && getTargetValue(rear) <= getTargetValue(front) && !hasPayoff) return true;
+  }
+
+  if (signal.type === "pin") {
+    const pinnedTo = signal.tags?.targetPiece || signal.tags?.pinnedTo;
+    const normalizedPinnedTo = normalizePieceType(pinnedTo);
+    const isAbsolutePin = normalizedPinnedTo === "k" || signal.tags?.pinnedTo === "king";
+    const isQueenPin = normalizedPinnedTo === "q" || signal.tags?.pinnedTo === "queen";
+
+    if (!isAbsolutePin && !isQueenPin && !hasPayoff) return true;
+  }
+
+  if (signal.type === "discoveredAttack") {
+    const target = signal.targets?.[0];
+    const attackerPiece = normalizePieceType(signal.tags?.attacker);
+    const targetValue = getTargetValue(target);
+    const attackerValue = PIECE_VALUES[attackerPiece] || 0;
+
+    if (!targetValue || !attackerValue || targetValue <= attackerValue) return true;
+  }
+
+  if (
+    signal.type === "removeDefender" &&
+    !hasPayoff &&
+    !types.has("fork") &&
+    !types.has("validatedSkewer") &&
+    !types.has("mateThreat")
+  ) {
+    const target = signal.targets?.[0];
+    if (!target || getTargetValue(target) <= 1) return true;
+  }
+
+  return false;
+}
+
+function applyCentralSignalPolicy(signals = [], context = {}) {
+  const normalized = signals
+    .map((signal) => normalizeAttackSignal(signal, context))
+    .filter(Boolean);
+
+  return normalized.filter(
+    (signal) => !isWeakGeometricSignal(signal, normalized, context)
   );
 }
 
@@ -272,7 +411,8 @@ function removeRedundantSignals(signals = [], context = {}) {
         types.has("skewer") ||
         types.has("tacticalContinuation") ||
         types.has("tacticalSequence") ||
-        types.has("opponentTacticalReply");
+        types.has("opponentTacticalReply") ||
+        types.has("continuationMaterialLoss");
 
       if (normalizedPinnedPiece === "p" && !hasTacticalPayoff) {
         return false;
@@ -296,6 +436,8 @@ function removeRedundantSignals(signals = [], context = {}) {
         types.has("skewer") ||
         types.has("tacticalContinuation") ||
         types.has("tacticalSequence") ||
+        types.has("opponentTacticalReply") ||
+        types.has("continuationMaterialLoss") ||
         types.has("mateThreat");
 
       const isAbsolutePin = targetPiece === "k";
@@ -357,7 +499,10 @@ function removeRedundantSignals(signals = [], context = {}) {
       return false;
     }
 
-    if (types.has("opponentTacticalReply") && ["materialLoss", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)) {
+    if (
+      (types.has("opponentTacticalReply") || types.has("continuationMaterialLoss")) &&
+      ["materialLoss", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)
+    ) {
       return false;
     }
 
@@ -525,7 +670,7 @@ function removeRedundantSignals(signals = [], context = {}) {
     }
 
     if (
-      (types.has("tacticalSequence") || types.has("tacticalContinuation") || types.has("greedyCapturePunishment") || types.has("opponentTacticalReply")) &&
+      (types.has("tacticalSequence") || types.has("tacticalContinuation") || types.has("greedyCapturePunishment") || types.has("opponentTacticalReply") || types.has("continuationMaterialLoss")) &&
       ["materialLoss", "capture", "recapture", "attack", "hanging", "enemyPressure", "ignoredAttack"].includes(signal.type)
     ) {
       return false;
@@ -599,10 +744,9 @@ function sortByPriority(signals = []) {
 }
 
 export function selectMessageSignals(detections = [], context = {}) {
-  const usable = removeRedundantSignals(
-    removeDuplicateSignals(detections.filter(isUsableSignal)),
-    context
-  );
+  const deduped = removeDuplicateSignals(detections.filter(isUsableSignal));
+  const policyFiltered = applyCentralSignalPolicy(deduped, context).filter(isUsableSignal);
+  const usable = removeRedundantSignals(policyFiltered, context);
 
   const sorted = sortByPriority(usable);
   const primary = sorted[0];
@@ -682,7 +826,11 @@ function buildCombinedMessage(signals = [], context = {}) {
 function shouldShowLabel(label, signals = []) {
   if (!signals.length) return true;
 
-  if (signals.some((signal) => signal.type === "opponentTacticalReply")) {
+  if (
+    signals.some((signal) =>
+      ["continuationMaterialLoss", "opponentTacticalReply"].includes(signal.type)
+    )
+  ) {
     return ["Mistake", "Blunder"].includes(label);
   }
 
@@ -817,6 +965,40 @@ function getPunishingReplyText({ playedLine, fenBefore, fenAfter, san, side }) {
   return "";
 }
 
+
+function formatOpeningName(openingContext) {
+  if (!openingContext) return "the opening book";
+
+  return `${openingContext.name}${openingContext.eco ? ` (${openingContext.eco})` : ""}`;
+}
+
+function getOpeningContextText(openingContext, label) {
+  if (!openingContext) return "";
+
+  const openingName = formatOpeningName(openingContext);
+
+  if (openingContext.status === "inBook") {
+    return `This follows the opening book in ${openingName}.`;
+  }
+
+  if (openingContext.status === "leftBook") {
+    const expected = openingContext.expectedText
+      ? ` A common book continuation was ${openingContext.expectedText}.`
+      : "";
+
+    return `This leaves the exact opening book from ${openingName}.${expected}`;
+  }
+
+  if (openingContext.status === "beyondKnownBook") {
+    const normalMoveText =
+      label === "Good" ? ", but it is still a normal move" : "";
+
+    return `This is beyond the exact book line for ${openingName}${normalMoveText}.`;
+  }
+
+  return "";
+}
+
 export function explainMove({
   label,
   san,
@@ -827,8 +1009,11 @@ export function explainMove({
   detections,
   playedEval,
   playedLine,
+  openingContext,
 }) {
-  const opener = `${side === "w" ? "White" : "Black"} played ${san}.`;
+  const baseOpener = `${side === "w" ? "White" : "Black"} played ${san}.`;
+  const openingText = getOpeningContextText(openingContext, label);
+  const opener = openingText ? `${baseOpener} ${openingText}` : baseOpener;
 
   if (san?.includes("#")) {
     return `${opener} This is checkmate.`;
@@ -916,6 +1101,10 @@ export function explainMove({
         ? `A better move was ${bestHuman}, which ${idea}.`
         : `A better move was ${bestHuman}.`
     }`.trim();
+  }
+
+  if (openingText && label === "Good") {
+    return opener;
   }
 
   return `${opener} ${getLabelSentence(label)}`;

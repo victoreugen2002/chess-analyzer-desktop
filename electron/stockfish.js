@@ -139,13 +139,21 @@ class StockfishEngine {
       this.lastPv = "";
       this.bestMove = null;
 
+      const fullStrength = elo >= 3000;
       const safeElo = Math.max(800, Math.min(elo, 2800));
 
-      console.log("GET BEST MOVE:", { fen, elo: safeElo, depth });
+      console.log("GET BEST MOVE:", { fen, elo: fullStrength ? "full" : safeElo, depth });
 
       this.engine.stdin.write("ucinewgame\n");
-      this.engine.stdin.write("setoption name UCI_LimitStrength value true\n");
-      this.engine.stdin.write(`setoption name UCI_Elo value ${safeElo}\n`);
+
+      if (fullStrength) {
+        this.engine.stdin.write("setoption name UCI_LimitStrength value false\n");
+        this.engine.stdin.write("setoption name Skill Level value 20\n");
+      } else {
+        this.engine.stdin.write("setoption name UCI_LimitStrength value true\n");
+        this.engine.stdin.write(`setoption name UCI_Elo value ${safeElo}\n`);
+      }
+
       this.engine.stdin.write("setoption name MultiPV value 1\n");
       this.engine.stdin.write(`position fen ${fen}\n`);
       this.engine.stdin.write(`go depth ${depth}\n`);

@@ -8,17 +8,25 @@ export function getHeaders(chess) {
 
 function getInitialFenFromHeaders(headers = {}) {
   const fen = headers.FEN || headers.Fen || headers.fen;
+
   return typeof fen === "string" && fen.trim() ? fen.trim() : DEFAULT_FEN;
 }
 
 function createChessFromFen(fen) {
-  return new Chess(fen || DEFAULT_FEN);
+  try {
+    return new Chess(fen || DEFAULT_FEN);
+  } catch (error) {
+    console.warn("Invalid FEN, falling back to starting position:", error);
+    return new Chess();
+  }
 }
 
 export function loadPgnStrict(chess, pgn) {
   try {
     const ok = chess.loadPgn(pgn);
-    if (!ok) console.warn("PGN parse failed, but continuing");
+    if (!ok) {
+      console.warn("PGN parse failed, but continuing");
+    }
   } catch (e) {
     console.warn("PGN parse error:", e);
   }

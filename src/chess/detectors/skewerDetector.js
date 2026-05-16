@@ -1,11 +1,35 @@
 import { PIECE_VALUES } from "../core/pieces";
 import { squareToCoords, coordsToSquare } from "../utils";
+import { getDefendersOfSquare } from "../features/attacks";
 
 const LINE_DIRECTIONS = {
   b: [[1, 1], [1, -1], [-1, 1], [-1, -1]],
   r: [[1, 0], [-1, 0], [0, 1], [0, -1]],
   q: [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]],
 };
+
+function getSafeDefenders(chess, square, color) {
+  try {
+    return getDefendersOfSquare(chess, square, color) || [];
+  } catch {
+    return [];
+  }
+}
+
+function isRearCaptureMateriallyRelevant({ chess, attacker, rear, enemyColor }) {
+  if (!chess || !attacker || !rear || !enemyColor) return false;
+
+  const attackerValue = PIECE_VALUES[attacker.type] || 0;
+  const rearValue = PIECE_VALUES[rear.type] || 0;
+  const defenders = getSafeDefenders(chess, rear.square, enemyColor);
+  const isRearDefended = defenders.length > 0;
+
+  // A skewer should be more than a geometric line-up. If the rear piece is
+  // defended and has the same/lower value than the attacking line piece,
+  // capturing it is not a material win (for example bishop takes defended
+  // knight). In that case, keep only the simpler "attacks the rook" signal.
+  return !isRearDefended || rearValue > attackerValue;
+}
 
 function getAllSquares() {
   const squares = [];
@@ -57,19 +81,34 @@ function findSkewers(chess, attackerColor) {
           } else {
             const frontValue = PIECE_VALUES[front.type] || 0;
             const rearValue = PIECE_VALUES[piece.type] || 0;
+            const rear = { ...piece, square };
 
             const frontIsImportant = ["k", "q", "r"].includes(front.type);
             const rearIsWorthMentioning = rearValue >= 3;
             const isRealSkewer =
               front.type === "k" || frontValue > rearValue;
+            const rearCaptureIsRelevant = isRearCaptureMateriallyRelevant({
+              chess,
+              attacker,
+              rear,
+              enemyColor,
+            });
 
-            if (frontIsImportant && rearIsWorthMentioning && isRealSkewer) {
+            if (
+              frontIsImportant &&
+              rearIsWorthMentioning &&
+              isRealSkewer &&
+              rearCaptureIsRelevant
+            ) {
               const frontIsKing = front.type === "k";
+              const rearDefenders = getSafeDefenders(chess, rear.square, enemyColor);
 
               skewers.push({
                 attacker: { ...attacker, square: attackerSquare },
                 front,
-                rear: { ...piece, square },
+                rear,
+                rearIsDefended: rearDefenders.length > 0,
+                rearDefenderCount: rearDefenders.length,
                 strength: frontIsKing ? "xray" : "strong",
               });
             }
@@ -107,6 +146,8 @@ function toSignal(skewer) {
       attackerSquare: skewer.attacker.square,
       frontIsKing: skewer.front.type === "k",
       strength: skewer.strength || "strong",
+      rearIsDefended: Boolean(skewer.rearIsDefended),
+      rearDefenderCount: skewer.rearDefenderCount || 0,
     },
   };
 }

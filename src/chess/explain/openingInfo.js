@@ -1,137 +1,231 @@
+import aOpenings from "../data/openings/a.tsv?raw";
+import bOpenings from "../data/openings/b.tsv?raw";
+import cOpenings from "../data/openings/c.tsv?raw";
+import dOpenings from "../data/openings/d.tsv?raw";
+import eOpenings from "../data/openings/e.tsv?raw";
+
+function normalizeSan(san) {
+  return String(san || "")
+    .replace(/^0-0-0$/i, "O-O-O")
+    .replace(/^0-0$/i, "O-O")
+    .replace(/[+#?!]+/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function pgnToSans(pgn) {
+  return String(pgn || "")
+    .replace(/\{[^}]*\}/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\$\d+/g, " ")
+    .replace(/\d+\.(\.\.)?/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => !["1-0", "0-1", "1/2-1/2", "*"].includes(token))
+    .map(normalizeSan)
+    .filter(Boolean);
+}
+
+function parseTsv(raw) {
+  return String(raw || "")
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => {
+      const [eco, name, ...pgnParts] = line.split("\t");
+      const pgn = pgnParts.join("\t").trim();
+      const sans = pgnToSans(pgn);
+
+      return {
+        eco: eco?.trim(),
+        name: name?.trim(),
+        pgn,
+        sans,
+        length: sans.length,
+      };
+    })
+    .filter((opening) => opening.eco && opening.name && opening.sans.length);
+}
+
+const OPENINGS = [
+  ...parseTsv(aOpenings),
+  ...parseTsv(bOpenings),
+  ...parseTsv(cOpenings),
+  ...parseTsv(dOpenings),
+  ...parseTsv(eOpenings),
+];
+
+function isPrefix(prefix, full) {
+  if (!prefix?.length || !full?.length) return false;
+  if (prefix.length > full.length) return false;
+
+  return prefix.every((move, index) => move === full[index]);
+}
+
+function getPlayedSans(moves) {
+  return (Array.isArray(moves) ? moves : [])
+    .map((move) => (typeof move === "string" ? move : move?.san))
+    .map(normalizeSan)
+    .filter(Boolean);
+}
+
+function findBestOpeningForPrefix(playedSans) {
+  if (!playedSans.length) return null;
+
+  // Prefer the most specific already reached opening name.
+  const reachedOpening = OPENINGS
+    .filter((opening) => isPrefix(opening.sans, playedSans))
+    .sort((a, b) => b.length - a.length)[0];
+
+  if (reachedOpening) return reachedOpening;
+
+  // If the game is still early, use the closest known continuation.
+  return OPENINGS
+    .filter((opening) => isPrefix(playedSans, opening.sans))
+    .sort((a, b) => a.length - b.length)[0] || null;
+}
+
+function findPossibleNextBookMoves(playedSans) {
+  if (!playedSans.length) return [];
+
+  const seen = new Set();
+  const nextMoves = [];
+
+  for (const opening of OPENINGS) {
+    if (!isPrefix(playedSans, opening.sans)) continue;
+
+    const nextSan = opening.sans[playedSans.length];
+    if (!nextSan || seen.has(nextSan)) continue;
+
+    seen.add(nextSan);
+    nextMoves.push(nextSan);
+
+    if (nextMoves.length >= 4) break;
+  }
+
+  return nextMoves;
+}
+
+function formatPly(ply) {
+  const moveNumber = Math.ceil(ply / 2);
+  return ply % 2 === 1 ? `${moveNumber}. White` : `${moveNumber}... Black`;
+}
+
+function formatMoveList(moves) {
+  if (!moves?.length) return "";
+  if (moves.length === 1) return moves[0];
+  if (moves.length === 2) return `${moves[0]} or ${moves[1]}`;
+
+  return `${moves.slice(0, -1).join(", ")}, or ${moves[moves.length - 1]}`;
+}
+
 export function getOpeningInfo(moves) {
   if (!Array.isArray(moves) || !moves.length) return null;
 
-  const sans = moves
-    .map((m) => (typeof m === "string" ? m : m?.san))
-    .filter(Boolean)
-    .map((san) => san.replace(/[+#?!]+/g, "").replace(/\s+/g, ""));
+  const playedSans = getPlayedSans(moves);
 
-  const line = sans.join(" ");
-
-  const openings = [
-    {
-      name: "Ruy Lopez: Exchange Variation",
-      patterns: ["e4 e5 Nf3 Nc6 Bb5 a6 Bxc6"],
-      description:
-        "White gives up the bishop pair to damage Black’s pawn structure.\nPlan: simplify pieces and target Black’s doubled pawns.",
-    },
-    {
-      name: "Ruy Lopez: Berlin Defense",
-      patterns: ["e4 e5 Nf3 Nc6 Bb5 Nf6"],
-      description:
-        "Black challenges the e4 pawn early and aims for a solid structure.\nPlan: develop smoothly and look for small positional advantages.",
-    },
-    {
-      name: "Ruy Lopez",
-      patterns: ["e4 e5 Nf3 Nc6 Bb5"],
-      description:
-        "White pressures the knight on c6 and fights for the center indirectly.\nPlan: complete development and build central control.",
-    },
-    {
-      name: "Italian Game",
-      patterns: ["e4 e5 Nf3 Nc6 Bc4"],
-      description:
-        "White develops quickly and targets the weak f7 square.\nPlan: castle early and coordinate pieces for an attack.",
-    },
-    {
-      name: "Scotch Game",
-      patterns: ["e4 e5 Nf3 Nc6 d4"],
-      description:
-        "White opens the center quickly and creates active play.\nPlan: develop fast and use open lines actively.",
-    },
-    {
-      name: "Sicilian Defense: Najdorf",
-      patterns: ["e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6"],
-      description:
-        "Black creates an unbalanced and tactical position.\nPlan: be ready for sharp play and control key central squares.",
-    },
-    {
-      name: "Sicilian Defense",
-      patterns: ["e4 c5"],
-      description:
-        "Black fights for the center from the side.\nPlan: develop quickly and look for tactical chances.",
-    },
-    {
-      name: "French Defense",
-      patterns: ["e4 e6"],
-      description:
-        "Black builds a solid pawn structure and challenges the center.\nPlan: improve piece placement behind the pawn chain.",
-    },
-    {
-      name: "Caro-Kann Defense",
-      patterns: ["e4 c6"],
-      description:
-        "Black aims for a safe and solid setup.\nPlan: develop calmly and look for gradual counterplay.",
-    },
-    {
-      name: "Queen's Gambit Declined",
-      patterns: ["d4 d5 c4 e6"],
-      description:
-        "Black maintains a strong center and solid structure.\nPlan: develop pieces and contest central control.",
-    },
-    {
-      name: "Queen's Gambit Accepted",
-      patterns: ["d4 d5 c4 dxc4"],
-      description:
-        "Black accepts the pawn and challenges White’s center.\nPlan: develop quickly and regain central control.",
-    },
-    {
-      name: "Queen's Gambit",
-      patterns: ["d4 d5 c4"],
-      description:
-        "White challenges the center with the c-pawn.\nPlan: build strong central control and active pieces.",
-    },
-    {
-      name: "King's Indian Defense",
-      patterns: ["d4 Nf6 c4 g6 Nc3 Bg7"],
-      description:
-        "Black allows White to build a center and plans to attack it.\nPlan: prepare counterplay and strike at the right moment.",
-    },
-    {
-      name: "London System",
-      patterns: ["d4 d5 Bf4", "d4 Nf6 Bf4"],
-      description:
-        "White uses a simple and solid setup.\nPlan: develop smoothly and maintain a stable position.",
-    },
-    {
-      name: "English Opening",
-      patterns: ["c4"],
-      description:
-        "White controls the center from the flank.\nPlan: stay flexible and adapt your setup.",
-    },
-    {
-      name: "King's Pawn Opening",
-      patterns: ["e4"],
-      description:
-        "White immediately fights for the center.\nPlan: develop quickly and use open lines.",
-    },
-    {
-      name: "Queen's Pawn Opening",
-      patterns: ["d4"],
-      description:
-        "White takes central space and builds a solid position.\nPlan: develop steadily and control the center.",
-    },
-  ];
+  if (!playedSans.length) return null;
 
   let bestMatch = null;
 
-  for (const opening of openings) {
-    for (const pattern of opening.patterns) {
-      if (line.startsWith(pattern)) {
-        const length = pattern.split(" ").length;
+  for (const opening of OPENINGS) {
+    if (!isPrefix(opening.sans, playedSans)) continue;
 
-        if (!bestMatch || length > bestMatch.length) {
-          bestMatch = { ...opening, matchedPattern: pattern, length };
-        }
-      }
+    if (!bestMatch || opening.length > bestMatch.length) {
+      bestMatch = opening;
     }
   }
 
-  if (!bestMatch) return null;
+  if (!bestMatch) {
+    const partialMatch = OPENINGS
+      .filter((opening) => isPrefix(playedSans, opening.sans))
+      .sort((a, b) => a.length - b.length)[0];
+
+    if (!partialMatch) return null;
+
+    return {
+      eco: partialMatch.eco,
+      name: partialMatch.name,
+      matchedPattern: playedSans.join(" "),
+      matchedPgn: partialMatch.pgn,
+      outOfBookPly: null,
+      description: [
+        `ECO ${partialMatch.eco}.`,
+        "This game is still too early or too transpositional for a precise full match.",
+        `Closest known line: ${partialMatch.pgn}`,
+      ].join("\n"),
+    };
+  }
+
+  const outOfBookPly =
+    playedSans.length > bestMatch.length ? bestMatch.length + 1 : null;
 
   return {
+    eco: bestMatch.eco,
     name: bestMatch.name,
-    description: bestMatch.description,
-    matchedPattern: bestMatch.matchedPattern,
+    matchedPattern: bestMatch.sans.join(" "),
+    matchedPgn: bestMatch.pgn,
+    outOfBookPly,
+    description: [
+      `ECO ${bestMatch.eco}.`,
+      outOfBookPly
+        ? `You left this book line around ${formatPly(outOfBookPly)}.`
+        : "You are still inside the matched book line.",
+      `Book line: ${bestMatch.pgn}`,
+    ].join("\n"),
   };
+}
+
+export function getOpeningMoveContext(moves, moveIndex) {
+  if (!Array.isArray(moves) || moveIndex < 0) return null;
+
+  const playedSans = getPlayedSans(moves);
+  const currentSans = playedSans.slice(0, moveIndex + 1);
+  const previousSans = playedSans.slice(0, moveIndex);
+
+  if (!currentSans.length) return null;
+
+  const currentOpening = findBestOpeningForPrefix(currentSans);
+
+  // Still inside at least one known book path.
+  if (OPENINGS.some((opening) => isPrefix(currentSans, opening.sans))) {
+    return {
+      status: "inBook",
+      eco: currentOpening?.eco || null,
+      name: currentOpening?.name || "the opening book",
+      bookLine: currentOpening?.pgn || null,
+      expectedNextMoves: findPossibleNextBookMoves(currentSans),
+    };
+  }
+
+  // If the previous position was in book, this exact move is the first deviation.
+  if (previousSans.length && OPENINGS.some((opening) => isPrefix(previousSans, opening.sans))) {
+    const previousOpening = findBestOpeningForPrefix(previousSans);
+    const expectedNextMoves = findPossibleNextBookMoves(previousSans);
+
+    // Some ECO entries are terminal in the dataset. In that case, the app
+    // should not treat the next normal move as a serious book mistake, because
+    // there is no known continuation in the local book to compare against.
+    if (!expectedNextMoves.length) {
+      return {
+        status: "beyondKnownBook",
+        eco: previousOpening?.eco || null,
+        name: previousOpening?.name || "the opening book",
+        bookLine: previousOpening?.pgn || null,
+        expectedNextMoves: [],
+        expectedText: "",
+      };
+    }
+
+    return {
+      status: "leftBook",
+      eco: previousOpening?.eco || null,
+      name: previousOpening?.name || "the opening book",
+      bookLine: previousOpening?.pgn || null,
+      expectedNextMoves,
+      expectedText: formatMoveList(expectedNextMoves),
+    };
+  }
+
+  return null;
 }

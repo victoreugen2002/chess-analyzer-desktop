@@ -1,6 +1,55 @@
 import React from "react";
 import { getMoveBadgeClass, getMoveSymbol } from "../chess/ui/uiHelpers";
 
+function getAnalysisBadge(analysis) {
+  if (!analysis) return null;
+
+  if (analysis.qualitySymbol) {
+    return {
+      className:
+        analysis.qualityLabel === "Brilliant"
+          ? "badge badge--brilliant"
+          : "badge badge--excellent",
+      symbol: analysis.qualitySymbol,
+    };
+  }
+
+  if (!analysis.label || analysis.label === "Good") return null;
+
+  return {
+    className: getMoveBadgeClass(analysis.label),
+    symbol: getMoveSymbol(analysis.label),
+  };
+}
+
+function MoveCell({ move, analysis, selectedPly, setSelectedPly, setHoveredMove, resetPreview, sounds }) {
+  const badge = getAnalysisBadge(analysis);
+
+  return (
+    <button
+      onMouseEnter={() => {
+        if (selectedPly === move?.ply) {
+          setHoveredMove(analysis);
+        }
+      }}
+      onMouseLeave={() => setHoveredMove(null)}
+      onClick={() => {
+        if (!move) return;
+        resetPreview();
+        setSelectedPly(move.ply);
+        setHoveredMove(analysis);
+        sounds.playFromSan(move.san);
+      }}
+      className={`move-btn ${selectedPly === move?.ply ? "move-btn--active" : ""}`}
+    >
+      <div className="move-san">
+        {move?.san || ""}
+        {badge && <span className={badge.className}>{badge.symbol}</span>}
+      </div>
+    </button>
+  );
+}
+
 export default function MoveList({
   gameData,
   analysisMap,
@@ -24,55 +73,25 @@ export default function MoveList({
             <React.Fragment key={idx}>
               <div className="move-number">{idx + 1}</div>
 
-              <button
-                onMouseEnter={() => {
-                  if (selectedPly === white?.ply) {
-                    setHoveredMove(whiteAnalysis);
-                  }
-                }}
-                onMouseLeave={() => setHoveredMove(null)}
-                onClick={() => {
-                  if (!white) return;
-                  resetPreview();
-                  setSelectedPly(white.ply);
-                  setHoveredMove(whiteAnalysis);
-                  sounds.playFromSan(white.san);
-                }}
-                className={`move-btn ${selectedPly === white?.ply ? "move-btn--active" : ""}`}
-              >
-                <div className="move-san">
-                  {white?.san || ""}
-                  {whiteAnalysis?.label && (
-                    <span className={getMoveBadgeClass(whiteAnalysis.label)}>
-                      {getMoveSymbol(whiteAnalysis.label)}
-                    </span>
-                  )}
-                </div>
-              </button>
+              <MoveCell
+                move={white}
+                analysis={whiteAnalysis}
+                selectedPly={selectedPly}
+                setSelectedPly={setSelectedPly}
+                setHoveredMove={setHoveredMove}
+                resetPreview={resetPreview}
+                sounds={sounds}
+              />
 
-              <button
-                onMouseEnter={() => {
-                  if (selectedPly === black?.ply) {
-                    setHoveredMove(blackAnalysis);
-                  }
-                }}
-                onMouseLeave={() => setHoveredMove(null)}
-                onClick={() => {
-                  if (!black) return;
-                  resetPreview();
-                  setSelectedPly(black.ply);
-                  setHoveredMove(blackAnalysis);
-                  sounds.playFromSan(black.san);
-                }}
-                className={`move-btn ${selectedPly === black?.ply ? "move-btn--active" : ""}`}
-              >
-                <div className="move-san">{black?.san || ""}</div>
-                {blackAnalysis?.label ? (
-                  <span className={getMoveBadgeClass(blackAnalysis.label)}>
-                    {getMoveSymbol(blackAnalysis.label)}
-                  </span>
-                ) : null}
-              </button>
+              <MoveCell
+                move={black}
+                analysis={blackAnalysis}
+                selectedPly={selectedPly}
+                setSelectedPly={setSelectedPly}
+                setHoveredMove={setHoveredMove}
+                resetPreview={resetPreview}
+                sounds={sounds}
+              />
             </React.Fragment>
           );
         })}

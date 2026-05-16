@@ -16,6 +16,10 @@ function playUci(chess, uci) {
   });
 }
 
+function joinLineParts(parts = []) {
+  return parts.filter(Boolean).join(" ");
+}
+
 function sideName(color) {
   return color === "w" ? "White" : "Black";
 }
@@ -187,6 +191,16 @@ export async function buildGreedyCaptureValidations({
       const exposedPiece = exposed.type || greedyMove.captured;
       const exposedValue = exposed.value || PIECE_VALUES[exposedPiece] || 0;
 
+      const recapturePunishment =
+        tactic.tags?.recapturePunishment || null;
+
+      const greedyPreviewLineSans = joinLineParts([
+        greedyMove.san,
+        tacticalReply.san,
+        recapturePunishment?.recaptureSan,
+        recapturePunishment?.punishSan,
+      ]);
+
       validations.push({
         type: "greedyCapturePunishment",
         targets: [
@@ -212,6 +226,7 @@ export async function buildGreedyCaptureValidations({
           engineBestMove: replyUci,
           enginePv: engineReply?.pv || null,
           replySignal: tactic,
+          greedyPreviewLineSans,
         },
       });
     } catch {

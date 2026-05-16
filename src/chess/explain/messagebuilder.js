@@ -51,6 +51,22 @@ export function buildCoachMessage(signal) {
       }
 
 
+      case "continuationMaterialLoss": {
+        const winnerSide = signal.tags?.winnerSide || "the opponent";
+        const materialText = signal.tags?.description || "material";
+        const moveAttackText = signal.tags?.moveAttackText;
+        const lineSans = signal.tags?.relevantLineSans || signal.tags?.lineSans;
+
+        const base = `it leads to a continuation where ${winnerSide} wins ${materialText}`;
+        const lineText = lineSans ? ` (${lineSans})` : "";
+
+        if (moveAttackText) {
+          return `${moveAttackText}, but ${base}${lineText}.`;
+        }
+
+        return `This leads to a continuation where ${winnerSide} wins ${materialText}${lineText}.`;
+      }
+
     case "opponentTacticalReply": {
       const replySan = signal.tags?.replySan;
       const motifText = signal.tags?.motifText || "with a tactical response";

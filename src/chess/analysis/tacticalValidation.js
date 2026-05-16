@@ -1,43 +1,12 @@
 import { Chess } from "chess.js";
-import { PIECE_VALUES, getPieceName } from "../core/pieces";
 import { buildLegalContinuation, playMoveToken, playSan } from "./engineLine";
 import { getContinuationTactic, getMotifText } from "./continuationTactics";
+import { getContinuationMaterialLoss } from "./materialPayoff";
 import { detectSkewer } from "../detectors/skewerDetector";
-import { getAttackedSquaresByPiece } from "../utils";
-
-
+import { getMoveAttackText } from "./threatValidation";
 
 function sideName(color) {
   return color === "w" ? "White" : "Black";
-}
-
-
-
-function getMoveAttackText(chessAfter, move) {
-  if (!chessAfter || !move?.to || !move?.color) return "";
-
-  const movedPiece = chessAfter.get(move.to);
-  if (!movedPiece) return "";
-
-  const enemyColor = move.color === "w" ? "b" : "w";
-  const attackedSquares = getAttackedSquaresByPiece(chessAfter, move.to);
-
-  const targets = attackedSquares
-    .map((square) => ({ square, piece: chessAfter.get(square) }))
-    .filter(({ piece }) => piece?.color === enemyColor && piece.type !== "k")
-    .map(({ square, piece }) => ({
-      piece: piece.type,
-      square,
-      value: PIECE_VALUES[piece.type] || 0,
-    }))
-    .filter((target) => target.value >= 1)
-    .sort((a, b) => b.value - a.value);
-
-  const target = targets[0];
-  if (!target) return "";
-
-  const name = getPieceName(target.piece) || "piece";
-  return `This attacks the ${name} on ${target.square}`;
 }
 
 function isLossClearlyBadForMover(loss) {
@@ -118,6 +87,51 @@ async function buildOpponentTacticalReply({ item, analyzeFen, depth }) {
   }
 }
 
+
+async function buildContinuationMaterialLoss({ item, analyzeFen, depth }) {
+  if (!item?.fenAfter || !item?.side || !isLossClearlyBadForMover(item.loss)) {
+    return null;
+  }
+
+  try {
+    const engineLine = await getEngineLineAfterPlayedMove({ item, analyzeFen, depth });
+    const line = engineLine?.pv || engineLine?.bestMove;
+
+    const payoff = getContinuationMaterialLoss({
+      fen: item.fenAfter,
+      line,
+      perspective: item.side,
+      maxPlies: 10,
+      minLoss: 1,
+    });
+
+    if (!payoff) return null;
+
+    const playedAfter = new Chess(item.fenBefore);
+    const playedMove = playSan(playedAfter, item.san);
+    const moveAttackText = playedMove
+      ? getMoveAttackText(playedAfter, playedMove)
+      : "";
+
+    return {
+      type: "continuationMaterialLoss",
+      targets: [
+        {
+          piece: "material",
+          value: payoff.value,
+        },
+      ],
+      tags: {
+        ...payoff,
+        moveAttackText,
+        enginePv: engineLine?.pv || null,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function buildValidatedSkewer({ item, analyzeFen, depth }) {
   if (!item?.fenBefore || !item?.fenAfter || !item?.san || !item?.side) return null;
   if (!isMoveAcceptableForMover(item.loss)) return null;
@@ -186,6 +200,14 @@ export async function buildTacticalValidations({
 
   const validationDepth = Math.max(6, Math.min(depth || 10, 10));
   const validations = [];
+
+  const continuationMaterialLoss = await buildContinuationMaterialLoss({
+    item,
+    analyzeFen,
+    depth: validationDepth,
+  });
+
+  if (continuationMaterialLoss) validations.push(continuationMaterialLoss);
 
   const opponentReply = await buildOpponentTacticalReply({
     item,
